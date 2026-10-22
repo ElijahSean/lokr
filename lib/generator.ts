@@ -43,7 +43,9 @@ const AMBIGUOUS = new Set(['0', 'O', 'o', '1', 'l', 'I', '|'])
 // keeps the selection uniform regardless of list size).
 // 5 words ≈ 40 bits, 6 words ≈ 48 bits, 7 words ≈ 56 bits.
 // Longer passphrases are more memorable than short random passwords.
-const WORDLIST: string[] = [
+// Exported (with the username lists) only so tests/generator.spec.ts can check
+// every generated word really comes from the list.
+export const WORDLIST: string[] = [
   'able','acid','aged','also','area','army','away','baby','back','ball',
   'band','bank','base','bath','bear','beat','bell','best','bill','bird',
   'bite','blue','boat','body','bomb','bond','bone','book','boot','born',
@@ -210,14 +212,14 @@ function cryptoShuffle<T>(arr: T[]): T[] {
 
 // ─── Username Generator ───────────────────────────────────────────────────────
 
-const USERNAME_ADJECTIVES = [
+export const USERNAME_ADJECTIVES = [
   'swift', 'bold', 'calm', 'dark', 'bright', 'sharp', 'wild', 'cool',
   'iron', 'silver', 'silent', 'fierce', 'noble', 'brave', 'epic',
   'frozen', 'lucky', 'cosmic', 'neon', 'golden', 'crystal', 'shadow',
   'rapid', 'quiet', 'sleek', 'smart', 'steel', 'stone', 'stark',
 ]
 
-const USERNAME_NOUNS = [
+export const USERNAME_NOUNS = [
   'wolf', 'eagle', 'river', 'cloud', 'fire', 'wave', 'fox', 'hawk',
   'bear', 'tiger', 'falcon', 'comet', 'pixel', 'cipher', 'byte',
   'node', 'spark', 'echo', 'arrow', 'blade', 'orbit', 'pulse',

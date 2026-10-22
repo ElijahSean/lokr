@@ -101,6 +101,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 pnpm build        # Production build (type-check + bundle)
 pnpm lint         # Run ESLint
 pnpm type-check   # TypeScript check without building
+pnpm test         # Unit tests for lib/ (Vitest, specs in tests/)
 ```
 
 ### Recommended: Use a dedicated browser profile
