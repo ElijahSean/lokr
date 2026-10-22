@@ -1,0 +1,6 @@
+# Keep LF on disk: the files were written with LF, and autocrlf would rewrite
+# every one of them to CRLF on the next checkout (Qahal hit this after a stash).
+* text=auto eol=lf
+*.docx binary
+*.png binary
+*.ico binary

@@ -1,0 +1,61 @@
+/*
+ * globals.css — Global styles for Lokr
+ *
+ * This file is imported once in app/layout.tsx.
+ * Tailwind's three directives below inject the framework's base styles,
+ * component styles, and utility classes at build time.
+ *
+ * Keep actual styling in Tailwind classes on JSX elements.
+ * Only put truly global styles here (e.g. scrollbar, body defaults).
+ */
+
+/* Inject Tailwind's base reset (normalizes browser defaults) */
+@tailwind base;
+/* Inject Tailwind component classes */
+@tailwind components;
+/* Inject Tailwind utility classes (the bulk of Tailwind's output) */
+@tailwind utilities;
+
+/* ── Global body defaults ───────────────────────────────────────────────────── */
+@layer base {
+  body {
+    /* Dark background + light text for a security-focused aesthetic */
+    @apply bg-slate-950 text-slate-100 antialiased;
+  }
+
+  /* Custom scrollbar — dark theme to match the app */
+  ::-webkit-scrollbar {
+    @apply w-2;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-slate-900;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-700 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-600;
+  }
+
+  /* Remove all autocomplete autofill styling (browsers style it by default) */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: theme('colors.slate.100');
+    -webkit-box-shadow: 0 0 0px 1000px theme('colors.slate.800') inset;
+    transition: background-color 5000s ease-in-out 0s;
+  }
+}
+
+/* ── Utility layer additions ─────────────────────────────────────────────────── */
+@layer utilities {
+  /* Fade-in animation for vault entries and modals */
+  .animate-fade-in {
+    animation: fadeIn 0.25s ease-in-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+}

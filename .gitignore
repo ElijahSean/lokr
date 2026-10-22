@@ -1,0 +1,19 @@
+# Dependencies and build output
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# The dev loop's own bookkeeping: which requirement files have been processed.
+# Machine-local, like Qahal's (see DEVELOPMENT.md).
+.dev-loop/
+.claude/settings.local.json
+
+# Never commit a vault export. Both hold everything; the CSV holds it in plain text.
+*.vault
+*.csv
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.log
