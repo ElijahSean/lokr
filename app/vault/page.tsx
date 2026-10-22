@@ -7,7 +7,9 @@
  *
  * Security hooks active on this page:
  *  - useIdleLock: locks after 5 minutes of inactivity
- *  - useVisibilityLock: locks when tab becomes hidden (alt-tab, minimize, etc.)
+ *  - useVisibilityLock: locks when tab becomes hidden (alt-tab, minimize, etc.),
+ *    except while a sticky note is open full-window (task 2.7); useIdleLock
+ *    re-checks the clock when the tab returns, so the 5-minute rule still holds
  *
  * Layout:
  *  ┌───────────────────────────────────────────────────────────┐
@@ -20,7 +22,7 @@
 
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from '@/hooks/useSession'
 import { useIdleLock } from '@/hooks/useIdleLock'
@@ -47,6 +49,10 @@ export default function VaultPage() {
   const { isUnlocked, lock } = useSession()
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('vault')
+  // True while a note is open full-window. A ref in this page, so it is gone
+  // whenever a lock unmounts the page; nothing about it is stored anywhere.
+  const noteOpenRef = useRef(false)
+  const handleNoteOpenChange = useCallback((open: boolean) => { noteOpenRef.current = open }, [])
 
   // ── Security guards ─────────────────────────────────────────────────────────
 
@@ -60,8 +66,9 @@ export default function VaultPage() {
   // Lock after 5 minutes of user inactivity
   useIdleLock(lock, 5 * 60 * 1000)
 
-  // Lock when the user switches to another tab or minimizes the browser
-  useVisibilityLock(lock)
+  // Lock when the user switches to another tab or minimizes the browser,
+  // unless a note is open full-window (task 2.7)
+  useVisibilityLock(lock, noteOpenRef)
 
   // Show nothing while redirecting (avoids flash of vault content while locked)
   if (!isUnlocked) return null
@@ -140,7 +147,7 @@ export default function VaultPage() {
         {/* Render only the active tab — all others are unmounted */}
         {activeTab === 'vault'     && <VaultList />}
         {/* Decrypted notes live only in StickyNotes' state: gone on tab switch and on lock */}
-        {activeTab === 'notes'     && <StickyNotes />}
+        {activeTab === 'notes'     && <StickyNotes onNoteOpenChange={handleNoteOpenChange} />}
         {activeTab === 'generator' && <Generator />}
         {activeTab === 'health'    && <HealthDashboard />}
         {activeTab === 'export'    && <ExportImport />}

@@ -4,7 +4,8 @@
  * A fixed overlay inside the Notes tab, not a route, so lock and unmount behave
  * as for every other tab: locking unmounts the vault page and the decrypted
  * draft with it. An unsaved edit is lost on lock by design; keeping it would
- * mean storing plaintext somewhere.
+ * mean storing plaintext somewhere. While this view is open, hiding the tab
+ * doesn't lock (task 2.7); the 5-minute idle lock still does.
  *
  * Edits stay in the local draft until Save. Close and Escape ask before
  * discarding unsaved changes; while a confirm is showing, Escape cancels it.
@@ -241,9 +242,11 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
             draft.lined ? 'bg-notebook-lines bg-local' : ''
           }`}
         />
-        <p className="text-xs text-slate-500 text-right pt-2">
-          {draft.body.length.toLocaleString('en-US')} / {NOTE_BODY_MAX.toLocaleString('en-US')}
-        </p>
+        <div className="flex items-center justify-between gap-4 pt-2 text-xs text-slate-500">
+          {/* Task 2.7: switching tabs or minimising doesn't lock while a note is open */}
+          <p>Stays unlocked while open · locks after 5 min idle</p>
+          <p>{draft.body.length.toLocaleString('en-US')} / {NOTE_BODY_MAX.toLocaleString('en-US')}</p>
+        </div>
       </div>
     </div>
   )

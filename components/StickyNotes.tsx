@@ -51,7 +51,12 @@ const NEW_NOTE: NoteContent = { title: '', body: '', colour: DEFAULT_NOTE_COLOUR
 // CLAUDE.md forbids localStorage, and a view mode isn't worth an IndexedDB field.
 type NotesView = 'grid' | 'list'
 
-export default function StickyNotes() {
+interface StickyNotesProps {
+  /** Told whenever a note opens or closes full-window; the vault page skips its tab-switch lock while open (task 2.7). */
+  onNoteOpenChange: (_open: boolean) => void
+}
+
+export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
   const { encryptionKey, updateVaultSignature } = useSession()
 
   const [notes, setNotes]             = useState<LoadedNote[]>([])
@@ -79,6 +84,14 @@ export default function StickyNotes() {
 
   // Load once on mount; the tab remounts on every visit and after every lock
   useEffect(() => { void loadNotes() }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // One place that sees every open and close (open, Close, Escape, Delete);
+  // the cleanup also reports "closed" if this tab unmounts with a note open.
+  const isNoteOpen = openNote !== null
+  useEffect(() => {
+    onNoteOpenChange(isNoteOpen)
+    return () => onNoteOpenChange(false)
+  }, [isNoteOpen, onNoteOpenChange])
 
   useEffect(() => {
     if (openNote || returnFocusTo === null) return
