@@ -39,6 +39,7 @@ import {
 import { deriveKeys, generateSalt, signVault, verifyVault, bufferToBase64, base64ToBuffer } from '@/lib/crypto'
 import { clearClipboardNow } from '@/lib/clipboard'
 import { db } from '@/lib/db'
+import { buildVaultPayload } from '@/lib/vaultPayload'
 
 // ─── Context Shape ────────────────────────────────────────────────────────────
 
@@ -118,9 +119,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // Derive both keys — this is the slow step (Argon2id, ~1–2 seconds)
       const { encryptionKey, hmacKey } = await deriveKeys(password, salt)
 
-      // Load all encrypted entries to verify the HMAC
+      // Load all encrypted entries and sticky notes to verify the HMAC
       const entries = await db.vault_entries.orderBy('id').toArray()
-      const payload = JSON.stringify({ version: 1, salt: meta.salt, entries })
+      const notes   = await db.sticky_notes.orderBy('id').toArray()
+      const payload = buildVaultPayload(meta.salt, entries, notes)
 
       // Fail CLOSED: every vault created by Lokr is signed at setup, so a
       // missing signature means vault_meta was tampered with or corrupted.
@@ -167,7 +169,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const { encryptionKey, hmacKey } = await deriveKeys(password, salt)
 
       // Sign the initial empty vault so future unlocks can verify the password
-      const emptyPayload = JSON.stringify({ version: 1, salt: saltB64, entries: [] })
+      const emptyPayload = buildVaultPayload(saltB64, [])
       const signature    = await signVault(hmacKey, emptyPayload)
 
       // Store metadata (upsert with id=1)
@@ -217,7 +219,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (!meta)    return
 
     const entries  = await db.vault_entries.orderBy('id').toArray()
-    const payload  = JSON.stringify({ version: 1, salt: meta.salt, entries })
+    const notes    = await db.sticky_notes.orderBy('id').toArray()
+    const payload  = buildVaultPayload(meta.salt, entries, notes)
     const signature = await signVault(hKey, payload)
 
     await db.vault_meta.update(1, { hmacSignature: signature })

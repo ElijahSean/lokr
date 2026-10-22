@@ -41,6 +41,25 @@ module.exports = {
           800: '#004a62',
           900: '#002735',
         },
+        // Sticky-note paper colours (task 2.1). DEFAULT is the paper, `strip` the
+        // slightly darker top band. Values are Tailwind's -100/-200 shades, named
+        // here so dark mode (task 3.1) can retune every note in one place.
+        note: {
+          yellow: { DEFAULT: '#fef9c3', strip: '#fef08a' },
+          green:  { DEFAULT: '#dcfce7', strip: '#bbf7d0' },
+          blue:   { DEFAULT: '#e0f2fe', strip: '#bae6fd' },
+          pink:   { DEFAULT: '#fce7f3', strip: '#fbcfe8' },
+          orange: { DEFAULT: '#ffedd5', strip: '#fed7aa' },
+        },
+      },
+      // Notebook-paper ruled lines for lined sticky notes (task 2.1). The spacing
+      // matches the text's line height (leading-7 in the open note, leading-4
+      // on cards) so text sits on the lines; used with bg-local so they scroll.
+      backgroundImage: {
+        'notebook-lines':
+          'repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.75rem - 1px), rgb(0 0 0 / 0.14) calc(1.75rem - 1px), rgb(0 0 0 / 0.14) 1.75rem)',
+        'notebook-lines-sm':
+          'repeating-linear-gradient(to bottom, transparent 0, transparent calc(1rem - 1px), rgb(0 0 0 / 0.12) calc(1rem - 1px), rgb(0 0 0 / 0.12) 1rem)',
       },
       // Subtle animation for loading spinner and transitions
       animation: {

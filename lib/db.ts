@@ -13,6 +13,8 @@
  *   - vault_entries: The encrypted password records
  *   - vault_meta:    One record holding the Argon2 salt and vault HMAC signature
  *   - health_flags:  Cached security analysis per entry (strength, duplicates, age)
+ *   - password_history: Encrypted previous passwords per entry
+ *   - sticky_notes:  Encrypted free-standing notes (title, body, colour, pin as one blob)
  */
 
 import Dexie, { type Table } from 'dexie'
@@ -51,6 +53,19 @@ export interface PasswordHistory {
 }
 
 /**
+ * A sticky note. Title, body, colour and pinned are serialised together
+ * (lib/notes.ts) and encrypted as ONE AES-256-GCM blob, so none of them is
+ * readable in IndexedDB. Timestamps stay plaintext, as on vault entries.
+ */
+export interface StickyNote {
+  id?: number
+  encryptedNote: string   // AES-256-GCM ciphertext of the note JSON, base64-encoded
+  iv: string              // Fresh random IV on every save
+  createdAt: Date
+  updatedAt: Date
+}
+
+/**
  * Vault metadata — there is exactly ONE of these records (id = 1).
  * It holds the Argon2 salt and the vault's integrity signature.
  */
@@ -85,6 +100,7 @@ class LokrDatabase extends Dexie {
   vault_meta!:       Table<VaultMeta>
   health_flags!:     Table<HealthFlag>
   password_history!: Table<PasswordHistory>
+  sticky_notes!:     Table<StickyNote>
 
   constructor() {
     super('LokrDB')
@@ -112,6 +128,17 @@ class LokrDatabase extends Dexie {
       health_flags: 'entryId',
       password_history: '++id, entryId, replacedAt',
     })
+
+    // Version 3 (task 2.1) adds sticky_notes. Adding a table needs no upgrade()
+    // function: a version-2 database gains an empty store and keeps its data.
+    // Only plaintext timestamps are indexed; everything else is in the blob.
+    this.version(3).stores({
+      vault_entries: '++id, site, username, createdAt, updatedAt',
+      vault_meta: '++id',
+      health_flags: 'entryId',
+      password_history: '++id, entryId, replacedAt',
+      sticky_notes: '++id, updatedAt',
+    })
   }
 }
 
@@ -120,3 +147,34 @@ class LokrDatabase extends Dexie {
 // Import this 'db' object in any file that needs to read or write vault data.
 // Never instantiate LokrDatabase directly elsewhere.
 export const db = new LokrDatabase()
+
+// ─── Sticky Notes ─────────────────────────────────────────────────────────────
+// Notes go through these helpers, not Dexie in components (CLAUDE.md: all DB
+// operations through lib/db.ts). Callers pass ciphertext only and must call
+// updateVaultSignature() after every write, or the next unlock fails.
+
+export async function listStickyNotes(): Promise<StickyNote[]> {
+  return db.sticky_notes.orderBy('id').toArray()
+}
+
+export async function countStickyNotes(): Promise<number> {
+  return db.sticky_notes.count()
+}
+
+/** Returns the new note's id. */
+export async function addStickyNote(encryptedNote: string, iv: string): Promise<number> {
+  const now = new Date()
+  return (await db.sticky_notes.add({ encryptedNote, iv, createdAt: now, updatedAt: now })) as number
+}
+
+export async function updateStickyNote(id: number, encryptedNote: string, iv: string): Promise<void> {
+  await db.sticky_notes.update(id, { encryptedNote, iv, updatedAt: new Date() })
+}
+
+export async function deleteStickyNote(id: number): Promise<void> {
+  await db.sticky_notes.delete(id)
+}
+
+export async function clearStickyNotes(): Promise<void> {
+  await db.sticky_notes.clear()
+}

@@ -20,8 +20,9 @@
  * to reduce the attack surface of the import path.
  */
 
-import { db, type VaultEntry } from './db'
+import { db, clearStickyNotes, type VaultEntry } from './db'
 import { signVault, verifyVault, decryptEntry, deriveKeys, base64ToBuffer } from './crypto'
+import { buildVaultPayload } from './vaultPayload'
 
 // ─── .vault File Format ───────────────────────────────────────────────────────
 
@@ -62,7 +63,9 @@ export async function exportVaultFile(
     entries,
   }
 
-  const payloadJson = JSON.stringify(payload)
+  // Signed WITHOUT sticky notes: the file doesn't carry them until task 2.3,
+  // and a signature over notes the file lacks would fail every restore.
+  const payloadJson = buildVaultPayload(payload.salt, payload.entries)
   const signature   = await signVault(hmacKey, payloadJson)
 
   // The full file is payload + signature
@@ -158,8 +161,10 @@ export async function restoreVaultFile(
   )
 
   // Verify HMAC before touching local data.
-  // Re-construct the exact payload string that was signed during export.
-  const payload = JSON.stringify({ version, salt, entries })
+  // Re-construct the exact payload string that was signed during export
+  // (version is checked to be 1 above). Any `notes` key in a crafted file is
+  // neither signed nor read: only `entries` are written below.
+  const payload = buildVaultPayload(salt, entries)
   const isValid = await verifyVault(hmacKey, payload, signature)
 
   if (!isValid) {
@@ -180,9 +185,12 @@ export async function restoreVaultFile(
 
   // Replace local data. Old password history is cleared too — it was
   // encrypted under the previous vault's key and would be undecryptable.
+  // Sticky notes likewise: backups don't carry them until task 2.3, and the
+  // UI has the user tick a box acknowledging they'll be deleted.
   await db.vault_entries.clear()
   await db.health_flags.clear()
   await db.password_history.clear()
+  await clearStickyNotes()
 
   await db.vault_entries.bulkAdd(
     entries.map(e => ({
@@ -204,7 +212,7 @@ export async function restoreVaultFile(
   // Re-sign under the entries as actually stored (bulkAdd assigned new IDs,
   // so the file's signature no longer matches the local state).
   const stored       = await db.vault_entries.orderBy('id').toArray()
-  const newPayload   = JSON.stringify({ version: 1, salt, entries: stored })
+  const newPayload   = buildVaultPayload(salt, stored)  // notes table is empty now
   const newSignature = await signVault(hmacKey, newPayload)
 
   await db.vault_meta.put({

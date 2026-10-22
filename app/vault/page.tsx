@@ -14,7 +14,7 @@
  *  │  Header: Lokr logo   [nav tabs]   [lock button]           │
  *  ├───────────────────────────────────────────────────────────┤
  *  │  Main content area (changes based on active tab):         │
- *  │    Vault    │   Generator   │   Health   │   Export        │
+ *  │   Vault  │  Notes  │  Generator  │  Health  │  Backup      │
  *  └───────────────────────────────────────────────────────────┘
  */
 
@@ -29,13 +29,15 @@ import VaultList from '@/components/VaultList'
 import Generator from '@/components/Generator'
 import HealthDashboard from '@/components/HealthDashboard'
 import ExportImport from '@/components/ExportImport'
+import StickyNotes from '@/components/StickyNotes'
 import { LokrIcon } from '@/components/LokrLogo'
 
 // Navigation tab definitions
-type Tab = 'vault' | 'generator' | 'health' | 'export'
+type Tab = 'vault' | 'notes' | 'generator' | 'health' | 'export'
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'vault',     label: 'Vault',     icon: '🔐' },
+  { id: 'notes',     label: 'Notes',     icon: '📝' },
   { id: 'generator', label: 'Generator', icon: '⚡' },
   { id: 'health',    label: 'Health',    icon: '🛡️' },
   { id: 'export',    label: 'Backup',    icon: '💾' },
@@ -137,6 +139,8 @@ export default function VaultPage() {
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6">
         {/* Render only the active tab — all others are unmounted */}
         {activeTab === 'vault'     && <VaultList />}
+        {/* Decrypted notes live only in StickyNotes' state: gone on tab switch and on lock */}
+        {activeTab === 'notes'     && <StickyNotes />}
         {activeTab === 'generator' && <Generator />}
         {activeTab === 'health'    && <HealthDashboard />}
         {activeTab === 'export'    && <ExportImport />}

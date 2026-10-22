@@ -21,10 +21,12 @@
  *       from another device or a pre-reset vault restore correctly
  *     - HMAC is verified with the file-derived key before any local write
  *     - Existing vault is cleared before import (full replace, not merge)
+ *     - Sticky notes aren't in backups yet (task 2.3), so restore deletes them;
+ *       when there are any, the user must tick a box naming how many first
  *     - Vault is re-signed and the session adopts the file-derived keys
  *
  *  4. Full reset (⚠️ DESTRUCTIVE)
- *     - Wipes all IndexedDB data (entries, metadata, health flags)
+ *     - Wipes all IndexedDB data (entries, notes, history, metadata, health flags)
  *     - User must type "RESET" in a text field
  *     - Locks the vault and redirects to /
  *     - Irreversible without a backup
@@ -34,7 +36,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useSession } from '@/hooks/useSession'
-import { db } from '@/lib/db'
+import { db, countStickyNotes, clearStickyNotes } from '@/lib/db'
 import { downloadVaultFile, restoreVaultFile, exportCSV } from '@/lib/export'
 
 export default function ExportImport() {
@@ -55,6 +57,9 @@ export default function ExportImport() {
   const [importResult, setImportResult] = useState<{ count: number } | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Local sticky notes a restore would delete (backups don't carry them until 2.3)
+  const [noteCount, setNoteCount] = useState(0)
+  const [notesAcknowledged, setNotesAcknowledged] = useState(false)
 
   // ── Reset state ───────────────────────────────────────────────────────────────
   const [resetConfirmText, setResetConfirmText] = useState('')
@@ -105,14 +110,19 @@ export default function ExportImport() {
   }
 
   // ── Import .vault ─────────────────────────────────────────────────────────────
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     setImportFile(e.target.files?.[0] ?? null)
     setImportResult(null)
     setImportError(null)
+    setNotesAcknowledged(false)
+    // Counted from the table, never decrypted — no key needed
+    setNoteCount(await countStickyNotes())
   }
 
+  const restoreBlockedByNotes = noteCount > 0 && !notesAcknowledged
+
   async function handleRestore() {
-    if (!importFile || !importPassword) return
+    if (!importFile || !importPassword || restoreBlockedByNotes) return
 
     setIsImporting(true)
     setImportResult(null)
@@ -133,6 +143,8 @@ export default function ExportImport() {
       setImportResult({ count })
       setImportFile(null)
       setImportPassword('')
+      setNoteCount(0)
+      setNotesAcknowledged(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
 
     } catch (err) {
@@ -152,6 +164,9 @@ export default function ExportImport() {
       await db.vault_entries.clear()
       await db.health_flags.clear()
       await db.password_history.clear()
+      // Notes must go too: left behind under the old key, a new vault's next
+      // re-sign would include them and its unlock would be refused.
+      await clearStickyNotes()
       await db.vault_meta.clear()
       // Lock vault and redirect to /
       lock()
@@ -204,6 +219,9 @@ export default function ExportImport() {
             </h3>
             <p className="text-slate-500 text-sm mt-1">
               Downloads a <code className="text-slate-400">.vault</code> file. Passwords stay encrypted — safe to store anywhere.
+            </p>
+            <p className="text-slate-500 text-xs mt-1">
+              Sticky notes aren&apos;t included in backups yet.
             </p>
           </div>
           {lastBackupDate && (
@@ -276,9 +294,27 @@ export default function ExportImport() {
                 carries everything needed except this password.
               </p>
             </div>
+            {noteCount > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-2">
+                <p className="text-amber-700 text-sm">
+                  Notes aren&apos;t included in backups yet; restoring deletes
+                  your {noteCount} {noteCount === 1 ? 'note' : 'notes'}.
+                </p>
+                <label className="flex items-center gap-2 text-sm text-amber-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={notesAcknowledged}
+                    onChange={e => setNotesAcknowledged(e.target.checked)}
+                    disabled={isImporting}
+                    className="accent-amber-600"
+                  />
+                  I understand my {noteCount} {noteCount === 1 ? 'note' : 'notes'} will be deleted
+                </label>
+              </div>
+            )}
             <button
               onClick={handleRestore}
-              disabled={!importPassword || isImporting}
+              disabled={!importPassword || isImporting || restoreBlockedByNotes}
               className="w-full bg-brand-500 hover:bg-brand-600 disabled:bg-slate-700 disabled:text-slate-500 text-white font-medium text-sm py-2.5 rounded-xl transition-colors"
             >
               {isImporting ? 'Verifying and restoring…' : 'Restore Backup'}
@@ -350,7 +386,7 @@ export default function ExportImport() {
             <span aria-hidden="true">💣</span> Full Reset — Wipe All Data
           </h3>
           <p className="text-red-600 text-sm mt-1">
-            Permanently deletes all vault entries and metadata from this device.
+            Permanently deletes all vault entries, sticky notes and metadata from this device.
             This cannot be undone. Export a backup first.
           </p>
         </div>
