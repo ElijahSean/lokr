@@ -19,11 +19,12 @@
 /* ── Global body defaults ───────────────────────────────────────────────────── */
 @layer base {
   body {
-    /* Dark background + light text for a security-focused aesthetic */
-    @apply bg-slate-950 text-slate-100 antialiased;
+    /* YouVersion light page + dark text (task 3.2); the unlock screen and the
+       vault's top bar paint their own dark `ink` backgrounds */
+    @apply bg-slate-950 text-slate-100 font-sans antialiased;
   }
 
-  /* Custom scrollbar — dark theme to match the app */
+  /* Custom scrollbar — warm neutrals to match the light page */
   ::-webkit-scrollbar {
     @apply w-2;
   }

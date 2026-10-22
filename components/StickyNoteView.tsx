@@ -21,6 +21,8 @@ import {
   type NoteColour,
   type NoteContent,
 } from '@/lib/notes'
+import { WarningIcon } from '@/components/Icons'
+import { DANGER_OUTLINE } from '@/components/ui'
 
 /**
  * Literal class strings per colour: Tailwind only generates classes it finds
@@ -170,7 +172,9 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
         {confirm === 'discard' && (
           <div className="flex items-center gap-2" role="alert">
             <span className="text-sm text-slate-100">Discard unsaved changes?</span>
-            <button type="button" onClick={onClose} className={`${buttonBase} bg-red-600 hover:bg-red-700 text-white`}>
+            {/* Outlined, not filled: filled red is now the brand's Save colour (3.2) */}
+            <button type="button" onClick={onClose} className={`${buttonBase} ${DANGER_OUTLINE}`}>
+              <WarningIcon className="w-3.5 h-3.5" />
               Discard
             </button>
             <button type="button" onClick={() => setConfirm('none')} className={`${buttonBase} text-slate-300 hover:bg-black/5`}>
@@ -182,7 +186,8 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
         {confirm === 'delete' && (
           <div className="flex items-center gap-2" role="alert">
             <span className="text-sm text-red-700">Delete this note?</span>
-            <button type="button" onClick={() => void onDelete()} className={`${buttonBase} bg-red-600 hover:bg-red-700 text-white`}>
+            <button type="button" onClick={() => void onDelete()} className={`${buttonBase} ${DANGER_OUTLINE}`}>
+              <WarningIcon className="w-3.5 h-3.5" />
               Yes, delete
             </button>
             <button type="button" onClick={() => setConfirm('none')} className={`${buttonBase} text-slate-300 hover:bg-black/5`}>

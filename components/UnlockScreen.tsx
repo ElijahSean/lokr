@@ -16,6 +16,10 @@
  * Flow:
  *  Create: handleSetup() → setupVault(password) → router.replace('/vault')
  *  Unlock: handleUnlock() → unlock(password) → router.replace('/vault') or show error
+ *
+ * Look (task 3.2): fully dark and flat, like youversion.com's dark sections, on
+ * the `ink` tokens (a gradient glow was tried and removed at Elijah's request).
+ * Only classes and markup changed in 3.2; the logic above the JSX did not.
  */
 
 'use client'
@@ -26,6 +30,7 @@ import { useSession } from '@/hooks/useSession'
 import { db } from '@/lib/db'
 import { scorePassword } from '@/lib/generator'
 import { LokrIcon } from '@/components/LokrLogo'
+import { InfoIcon, LockIcon } from '@/components/Icons'
 
 // How many failed attempts before we start slowing the user down
 const THROTTLE_AFTER = 3
@@ -154,8 +159,8 @@ export default function UnlockScreen() {
 
   if (isFirstTime === null) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-ink flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
@@ -163,11 +168,11 @@ export default function UnlockScreen() {
   if (lockedUntil && Date.now() < lockedUntil) {
     const minutesLeft = Math.max(1, Math.ceil((lockedUntil - Date.now()) / 60_000))
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-8 text-center max-w-md w-full">
-          <div className="text-4xl mb-4">🔒</div>
-          <h1 className="text-primary font-bold text-xl mb-2">Vault Locked Out</h1>
-          <p className="text-red-700 text-sm">
+      <div className="min-h-screen bg-ink flex items-center justify-center px-4">
+        <div className="bg-ink-surface border border-red-500/40 rounded-3xl p-8 text-center max-w-md w-full">
+          <LockIcon className="w-10 h-10 mx-auto mb-4 text-red-400" />
+          <h1 className="text-ink-text font-semibold text-xl mb-2">Vault Locked Out</h1>
+          <p className="text-red-300 text-sm">
             Too many failed attempts. Try again in {minutesLeft} minute{minutesLeft === 1 ? '' : 's'}.
           </p>
         </div>
@@ -176,25 +181,28 @@ export default function UnlockScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-ink flex items-center justify-center px-4">
       <div className="w-full max-w-md animate-fade-in">
-        {/* Logo + branding */}
+        {/* Logo + branding; the italic serif is the site's "Faith in *Real Life*" accent */}
         <div className="text-center mb-8">
           <LokrIcon size={64} aria-hidden={false} className="mx-auto mb-4 drop-shadow-lg" />
-          <h1 className="text-primary text-3xl font-bold tracking-tight">Lokr</h1>
-          <p className="text-slate-500 text-sm mt-1">Your secrets, your machine.</p>
+          <h1 className="text-ink-text text-3xl font-semibold tracking-tight">Lokr</h1>
+          <p className="text-ink-muted text-base mt-1">
+            Your secrets, <span className="font-serif italic">your machine.</span>
+          </p>
         </div>
 
         {/* Card */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
-          <h2 className="text-primary font-semibold text-lg mb-6">
-            {isFirstTime ? 'Create Your Vault' : 'Unlock Your Vault'}
+        <div className="bg-ink-surface border border-ink-border rounded-3xl p-8 shadow-2xl">
+          <h2 className="text-ink-text font-semibold text-xl mb-6">
+            {isFirstTime ? 'Create' : 'Unlock'}{' '}
+            <span className="font-serif italic font-normal">Your Vault</span>
           </h2>
 
           <form onSubmit={isFirstTime ? handleSetup : handleUnlock} className="space-y-4">
             {/* Master password field */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-400 mb-1.5">
+              <label htmlFor="password" className="block text-sm font-medium text-ink-muted mb-1.5">
                 Master Password
               </label>
               <div className="relative">
@@ -209,16 +217,16 @@ export default function UnlockScreen() {
                   autoComplete="off"
                   autoFocus
                   className="
-                    w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 pr-10
-                    text-primary placeholder-slate-500 text-sm
-                    focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500
+                    w-full bg-ink-raised border border-ink-border rounded-xl px-4 py-2.5 pr-10
+                    text-ink-text placeholder-ink-subtle text-sm
+                    focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent
                     disabled:opacity-50 transition-colors
                   "
                 />
                 <button
                   type="button"
                   onClick={() => setShowPw(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink-text transition-colors"
                   aria-label={showPw ? 'Hide password' : 'Show password'}
                 >
                   {showPw ? (
@@ -232,7 +240,7 @@ export default function UnlockScreen() {
               {/* Strength meter — first-time setup only */}
               {isFirstTime && strength && (
                 <div className="mt-2 space-y-1">
-                  <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                  <div className="h-1.5 bg-ink-border rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-300 ${
                         strength.label === 'weak'   ? 'bg-red-500 w-1/4'    :
@@ -242,11 +250,12 @@ export default function UnlockScreen() {
                       }`}
                     />
                   </div>
+                  {/* -400 shades: the -600/-700 ones used on light screens are too dark on ink */}
                   <p className={`text-xs ${
-                    strength.label === 'weak'   ? 'text-red-600'    :
-                    strength.label === 'fair'   ? 'text-yellow-600' :
-                    strength.label === 'good'   ? 'text-blue-600'   :
-                    'text-green-700'
+                    strength.label === 'weak'   ? 'text-red-400'    :
+                    strength.label === 'fair'   ? 'text-yellow-400' :
+                    strength.label === 'good'   ? 'text-blue-400'   :
+                    'text-green-400'
                   }`}>
                     {strength.label.charAt(0).toUpperCase() + strength.label.slice(1)} password
                     {strength.suggestions.length > 0 && ` · ${strength.suggestions[0]}`}
@@ -258,7 +267,7 @@ export default function UnlockScreen() {
             {/* Confirm password — first-time setup only */}
             {isFirstTime && (
               <div>
-                <label htmlFor="confirm" className="block text-sm font-medium text-slate-400 mb-1.5">
+                <label htmlFor="confirm" className="block text-sm font-medium text-ink-muted mb-1.5">
                   Confirm Password
                 </label>
                 <input
@@ -271,11 +280,11 @@ export default function UnlockScreen() {
                   disabled={isLoading}
                   autoComplete="off"
                   className={`
-                    w-full bg-slate-800 border rounded-lg px-4 py-2.5
-                    text-primary placeholder-slate-500 text-sm
-                    focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500
+                    w-full bg-ink-raised border rounded-xl px-4 py-2.5
+                    text-ink-text placeholder-ink-subtle text-sm
+                    focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent
                     disabled:opacity-50 transition-colors
-                    ${confirmPw && confirmPw !== password ? 'border-red-400' : 'border-slate-700'}
+                    ${confirmPw && confirmPw !== password ? 'border-red-400' : 'border-ink-border'}
                   `}
                 />
               </div>
@@ -283,7 +292,7 @@ export default function UnlockScreen() {
 
             {/* Error message */}
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-red-700 text-sm">
+              <div className="bg-red-500/10 border border-red-500/40 rounded-xl px-4 py-3 text-red-300 text-sm">
                 {error}
               </div>
             )}
@@ -293,14 +302,14 @@ export default function UnlockScreen() {
               type="submit"
               disabled={isLoading || (isFirstTime ? (password !== confirmPw || password.length < MIN_MASTER_LENGTH) : !password)}
               className="
-                w-full bg-brand-500 hover:bg-brand-600 disabled:bg-slate-700 disabled:text-slate-500
-                text-white font-medium rounded-lg py-2.5 text-sm
+                w-full bg-ink-text hover:bg-white disabled:bg-ink-raised disabled:text-ink-subtle
+                text-ink font-medium rounded-full py-3 text-sm
                 transition-colors flex items-center justify-center gap-2
               "
             >
               {isLoading ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="w-4 h-4 border-2 border-ink border-t-transparent rounded-full animate-spin" />
                   {isFirstTime ? 'Creating vault…' : 'Deriving key… (~2s)'}
                 </>
               ) : (
@@ -309,7 +318,7 @@ export default function UnlockScreen() {
             </button>
           </form>
 
-          <p className="text-slate-600 text-xs text-center mt-6">
+          <p className="text-ink-muted text-xs text-center mt-6">
             {isFirstTime
               ? 'Your master password is never stored. If you forget it, there is no recovery.'
               : 'All decryption happens locally. Nothing leaves your device.'
@@ -320,10 +329,10 @@ export default function UnlockScreen() {
         {/* First-launch tip — the create form only ever shows once, so no
             dismissal state is needed (and localStorage is off-limits anyway) */}
         {isFirstTime && (
-          <div className="mt-4 bg-brand-50 border border-brand-200 rounded-xl px-4 py-3 flex gap-2.5 animate-fade-in">
-            <span aria-hidden="true" className="text-sm flex-shrink-0">💡</span>
-            <p className="text-slate-400 text-xs leading-relaxed">
-              <span className="font-semibold text-slate-300">Tip:</span> use a
+          <div className="mt-4 bg-ink-surface border border-ink-border rounded-2xl px-4 py-3 flex gap-2.5 animate-fade-in">
+            <InfoIcon className="w-4 h-4 flex-shrink-0 mt-px text-accent" />
+            <p className="text-ink-muted text-xs leading-relaxed">
+              <span className="font-semibold text-ink-text">Tip:</span> use a
               dedicated browser profile for Lokr, with no extensions installed.
               Extensions can read page content — including passwords you reveal —
               and a separate profile keeps your vault isolated from everyday browsing.

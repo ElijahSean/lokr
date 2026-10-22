@@ -38,6 +38,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useSession } from '@/hooks/useSession'
 import { db, countStickyNotes, clearStickyNotes } from '@/lib/db'
 import { downloadVaultFile, restoreVaultFile, exportCSV } from '@/lib/export'
+import { ClockIcon, DownloadIcon, TrashIcon, UploadIcon, WarningIcon } from '@/components/Icons'
+import { DANGER_OUTLINE } from '@/components/ui'
 
 export default function ExportImport() {
   const { encryptionKey, hmacKey, lock, adoptSessionKeys } = useSession()
@@ -196,7 +198,7 @@ export default function ExportImport() {
       {/* ── Backup reminder ──────────────────────────────────────────────── */}
       {shouldWarnBackup && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-start gap-3">
-          <span className="text-xl mt-0.5" aria-hidden="true">⏰</span>
+          <ClockIcon className="w-5 h-5 mt-0.5 flex-shrink-0 text-amber-700" />
           <div>
             <p className="text-amber-700 font-medium text-sm">Time for a backup</p>
             <p className="text-amber-600 text-xs mt-0.5">
@@ -215,7 +217,7 @@ export default function ExportImport() {
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-primary font-medium flex items-center gap-2">
-              <span aria-hidden="true">💾</span> Export Encrypted Backup
+              <DownloadIcon /> Export Encrypted Backup
             </h3>
             <p className="text-slate-500 text-sm mt-1">
               Downloads a <code className="text-slate-400">.vault</code> file. Passwords stay encrypted — safe to store anywhere.
@@ -250,7 +252,7 @@ export default function ExportImport() {
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
         <div>
           <h3 className="text-primary font-medium flex items-center gap-2">
-            <span aria-hidden="true">📥</span> Import Backup
+            <UploadIcon /> Import Backup
           </h3>
           <p className="text-slate-500 text-sm mt-1">
             Restore from a <code className="text-slate-400">.vault</code> file.
@@ -342,7 +344,7 @@ export default function ExportImport() {
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
         <div>
           <h3 className="text-primary font-medium flex items-center gap-2">
-            <span aria-hidden="true">⚠️</span> Export Plaintext CSV
+            <WarningIcon /> Export Plaintext CSV
           </h3>
           {/* Large, prominent warning */}
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-2">
@@ -373,8 +375,10 @@ export default function ExportImport() {
         <button
           onClick={handleExportCsv}
           disabled={csvConfirmText !== 'CONFIRM' || isExportingCsv}
-          className="w-full bg-red-700 hover:bg-red-600 disabled:bg-slate-700 disabled:text-slate-500 text-white font-medium text-sm py-2.5 rounded-xl transition-colors"
+          className={`${DANGER_OUTLINE} w-full font-medium text-sm py-2.5 rounded-xl`}
         >
+          {/* Outlined, not filled: filled red is now the brand's Save colour (3.2) */}
+          <WarningIcon />
           {isExportingCsv ? 'Exporting…' : 'Download lokr-export.csv'}
         </button>
       </div>
@@ -383,7 +387,7 @@ export default function ExportImport() {
       <div className="bg-red-50 border border-red-200 rounded-2xl p-6 space-y-4">
         <div>
           <h3 className="text-red-700 font-medium flex items-center gap-2">
-            <span aria-hidden="true">💣</span> Full Reset — Wipe All Data
+            <TrashIcon /> Full Reset — Wipe All Data
           </h3>
           <p className="text-red-600 text-sm mt-1">
             Permanently deletes all vault entries, sticky notes and metadata from this device.
@@ -409,8 +413,9 @@ export default function ExportImport() {
         <button
           onClick={handleReset}
           disabled={resetConfirmText !== 'RESET' || isResetting}
-          className="w-full bg-red-800 hover:bg-red-700 disabled:bg-slate-700 disabled:text-slate-500 text-white font-medium text-sm py-2.5 rounded-xl transition-colors"
+          className={`${DANGER_OUTLINE} w-full font-medium text-sm py-2.5 rounded-xl`}
         >
+          <WarningIcon />
           {isResetting ? 'Wiping vault…' : 'Permanently Delete Everything'}
         </button>
       </div>

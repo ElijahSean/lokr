@@ -5,6 +5,7 @@ import { useSession } from '@/hooks/useSession'
 import { db, type VaultEntry } from '@/lib/db'
 import { decryptEntry } from '@/lib/crypto'
 import { scorePassword, type StrengthResult } from '@/lib/generator'
+import { CalendarIcon, CheckCircleIcon, RepeatIcon, WarningIcon } from '@/components/Icons'
 
 const AGE_WARNING_DAYS = 90
 
@@ -163,7 +164,7 @@ export default function HealthDashboard() {
       {/* All clear */}
       {issueCount === 0 && total > 0 && (
         <div className="bg-green-50 border border-green-200 rounded-2xl p-8 text-center">
-          <div className="text-4xl mb-3">✅</div>
+          <CheckCircleIcon className="w-10 h-10 mx-auto mb-3 text-green-700" />
           <h3 className="text-green-700 font-semibold text-lg mb-1">All Clear!</h3>
           <p className="text-green-600 text-sm">
             All {total} entr{total === 1 ? 'y is' : 'ies are'} unique and up to date, with no weak passwords.
@@ -174,7 +175,7 @@ export default function HealthDashboard() {
       {weakEntries.length > 0 && (
         <IssueSection
           title="Weak or Fair Passwords"
-          icon="⚠️"
+          Icon={WarningIcon}
           color="red"
           description="These passwords may be easy to guess or brute-force. Consider replacing them with stronger ones."
           analyses={weakEntries}
@@ -184,7 +185,7 @@ export default function HealthDashboard() {
       {duplicateEntries.length > 0 && (
         <IssueSection
           title="Reused Passwords"
-          icon="🔁"
+          Icon={RepeatIcon}
           color="orange"
           description="These sites share the same password. If one account is breached, all others with this password are at risk."
           analyses={duplicateEntries}
@@ -194,7 +195,7 @@ export default function HealthDashboard() {
       {oldEntries.length > 0 && (
         <IssueSection
           title={`Passwords Older Than ${AGE_WARNING_DAYS} Days`}
-          icon="📅"
+          Icon={CalendarIcon}
           color="amber"
           description="These passwords haven't been changed in a while. Regular rotation reduces risk from unreported breaches."
           analyses={oldEntries}
@@ -224,10 +225,10 @@ const issueColors = {
 } as const
 
 function IssueSection({
-  title, icon, color, description, analyses
+  title, Icon, color, description, analyses
 }: {
   title: string
-  icon: string
+  Icon: (_props: { className?: string }) => JSX.Element  // a line icon from Icons.tsx (3.2)
   color: keyof typeof issueColors
   description: string
   analyses: EntryAnalysis[]
@@ -238,7 +239,7 @@ function IssueSection({
     <div className={`border ${section} rounded-2xl overflow-hidden`}>
       <div className="px-5 py-4 border-b border-slate-700">
         <h3 className={`font-semibold flex items-center gap-2 ${titleColor}`}>
-          <span aria-hidden="true">{icon}</span>
+          <Icon className="w-4 h-4" />
           {title} ({analyses.length})
         </h3>
         <p className="text-slate-500 text-xs mt-1">{description}</p>

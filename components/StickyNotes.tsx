@@ -31,6 +31,7 @@ import {
   type NoteContent,
 } from '@/lib/notes'
 import StickyNoteView, { NOTE_CLASSES, PinIcon } from './StickyNoteView'
+import { NotesIcon } from '@/components/Icons'
 
 interface LoadedNote {
   id: number
@@ -243,7 +244,7 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
 
       {!isLoading && notes.length === 0 && (
         <div className="text-center py-16 border border-slate-800 border-dashed rounded-2xl">
-          <div className="text-5xl mb-4">📝</div>
+          <NotesIcon className="w-10 h-10 mx-auto mb-4 text-slate-500" />
           <h3 className="text-primary font-semibold mb-2">No notes yet</h3>
           <p className="text-slate-500 text-sm mb-6">
             For secrets that aren&apos;t a login: Wi-Fi details, combinations, instructions.

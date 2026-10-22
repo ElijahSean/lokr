@@ -274,7 +274,7 @@ Master Password + Random Salt
 |---|---|---|
 | Framework | Next.js 14 (App Router) | App shell, routing, security headers |
 | Language | TypeScript strict mode | Type safety across all files |
-| Styling | Tailwind CSS | Utility classes, BibleProject design tokens |
+| Styling | Tailwind CSS | Utility classes, YouVersion colour tokens |
 | Key derivation | argon2-browser (Argon2id) | Master password → encryption key |
 | Encryption | Web Crypto API — AES-256-GCM | Per-entry encryption with authentication |
 | Integrity | Web Crypto API — HMAC-SHA256 | Vault-level tamper detection |

@@ -26,6 +26,8 @@ import { db, type VaultEntry, type PasswordHistory } from '@/lib/db'
 import { decryptEntry } from '@/lib/crypto'
 import { copyWithAutoClear } from '@/lib/clipboard'
 import type { StrengthResult } from '@/lib/generator'
+import { WarningIcon } from '@/components/Icons'
+import { DANGER_OUTLINE } from '@/components/ui'
 
 // Show age warning if password hasn't changed in 90 days
 const AGE_WARNING_THRESHOLD_MS = 90 * 24 * 60 * 60 * 1000
@@ -422,10 +424,12 @@ export default function EntryCard({
           {showDeleteConfirm ? (
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-red-600">Delete?</span>
+              {/* Outlined, not filled: filled red is now the brand's Save colour (3.2) */}
               <button
                 onClick={() => onDelete(entry.id!)}
-                className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg transition-colors"
+                className={`${DANGER_OUTLINE} text-xs px-3 py-1.5 rounded-lg`}
               >
+                <WarningIcon className="w-3.5 h-3.5" />
                 Yes
               </button>
               <button

@@ -27,6 +27,7 @@ import { db, type VaultEntry } from '@/lib/db'
 import { encryptEntry, decryptEntry } from '@/lib/crypto'
 import { scorePassword, generatePassword, type GeneratorOptions } from '@/lib/generator'
 import EntryCard from './EntryCard'
+import { LockIcon, PinCodeIcon, VaultIcon } from '@/components/Icons'
 
 const EMPTY_FORM = {
   site:          '',
@@ -319,7 +320,7 @@ export default function VaultList() {
 
       {!isLoading && entries.length === 0 && (
         <div className="text-center py-16 border border-slate-800 border-dashed rounded-2xl">
-          <div className="text-5xl mb-4">🔐</div>
+          <LockIcon className="w-10 h-10 mx-auto mb-4 text-slate-500" />
           <h3 className="text-primary font-semibold mb-2">Your vault is empty</h3>
           <p className="text-slate-500 text-sm mb-6">Add your first password to get started.</p>
           <button
@@ -374,13 +375,15 @@ export default function VaultList() {
                     key={t}
                     type="button"
                     onClick={() => setForm(f => ({ ...f, entryType: t, password: '' }))}
-                    className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors border ${
+                    className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors border flex items-center justify-center gap-1.5 ${
                       form.entryType === t
                         ? 'bg-brand-500 text-white border-brand-500'
                         : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-primary'
                     }`}
                   >
-                    {t === 'password' ? '🔑 Password / Passphrase' : '🏧 PIN / Code'}
+                    {t === 'password'
+                      ? <><VaultIcon className="w-3.5 h-3.5" /> Password / Passphrase</>
+                      : <><PinCodeIcon className="w-3.5 h-3.5" /> PIN / Code</>}
                   </button>
                 ))}
               </div>

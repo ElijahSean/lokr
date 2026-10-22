@@ -11,9 +11,10 @@
  *    except while a sticky note is open full-window (task 2.7); useIdleLock
  *    re-checks the clock when the tab returns, so the 5-minute rule still holds
  *
- * Layout:
+ * Layout (task 3.2: YouVersion's mixed look, a dark `ink` top bar and footer
+ * over the light page):
  *  ┌───────────────────────────────────────────────────────────┐
- *  │  Header: Lokr logo   [nav tabs]   [lock button]           │
+ *  │  Header: Lokr logo   [pill tabs]   [lock button]          │
  *  ├───────────────────────────────────────────────────────────┤
  *  │  Main content area (changes based on active tab):         │
  *  │   Vault  │  Notes  │  Generator  │  Health  │  Backup      │
@@ -33,16 +34,18 @@ import HealthDashboard from '@/components/HealthDashboard'
 import ExportImport from '@/components/ExportImport'
 import StickyNotes from '@/components/StickyNotes'
 import { LokrIcon } from '@/components/LokrLogo'
+import { BackupIcon, GeneratorIcon, HealthIcon, LockIcon, NotesIcon, VaultIcon } from '@/components/Icons'
 
 // Navigation tab definitions
 type Tab = 'vault' | 'notes' | 'generator' | 'health' | 'export'
 
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'vault',     label: 'Vault',     icon: '🔐' },
-  { id: 'notes',     label: 'Notes',     icon: '📝' },
-  { id: 'generator', label: 'Generator', icon: '⚡' },
-  { id: 'health',    label: 'Health',    icon: '🛡️' },
-  { id: 'export',    label: 'Backup',    icon: '💾' },
+// Line icons in place of emoji (task 3.2)
+const TABS: { id: Tab; label: string; Icon: (_props: { className?: string }) => JSX.Element }[] = [
+  { id: 'vault',     label: 'Vault',     Icon: VaultIcon },
+  { id: 'notes',     label: 'Notes',     Icon: NotesIcon },
+  { id: 'generator', label: 'Generator', Icon: GeneratorIcon },
+  { id: 'health',    label: 'Health',    Icon: HealthIcon },
+  { id: 'export',    label: 'Backup',    Icon: BackupIcon },
 ]
 
 export default function VaultPage() {
@@ -78,30 +81,31 @@ export default function VaultPage() {
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col">
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <header className="border-b border-slate-800 bg-slate-950 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+      <header className="bg-ink sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           {/* Logo + wordmark */}
           <div className="flex items-center gap-2">
             <LokrIcon size={32} />
-            <span className="text-primary font-semibold text-lg tracking-tight">Lokr</span>
+            <span className="text-ink-text font-semibold text-lg tracking-tight">Lokr</span>
           </div>
 
-          {/* Navigation tabs — hidden on very small screens, shown on sm+ */}
-          <nav className="hidden sm:flex items-center gap-1" aria-label="Main navigation">
+          {/* Navigation tabs — shown from md (768px): between 640 and ~700px the
+              five labelled tabs are wider than the window and the page scrolled sideways */}
+          <nav className="hidden md:flex items-center gap-1" aria-label="Main navigation">
             {TABS.map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 aria-current={activeTab === tab.id ? 'page' : undefined}
                 className={`
-                  px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                  flex items-center gap-2 px-3.5 py-2 rounded-full text-sm font-medium transition-colors
                   ${activeTab === tab.id
-                    ? 'bg-brand-500 text-white'
-                    : 'text-slate-400 hover:text-primary hover:bg-slate-800'
+                    ? 'bg-ink-text text-ink'
+                    : 'text-ink-muted hover:text-ink-text hover:bg-ink-surface'
                   }
                 `}
               >
-                <span className="mr-1.5" aria-hidden="true">{tab.icon}</span>
+                <tab.Icon className="w-4 h-4" />
                 {tab.label}
               </button>
             ))}
@@ -111,31 +115,30 @@ export default function VaultPage() {
           <button
             onClick={lock}
             title="Lock vault"
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-primary hover:bg-slate-800 transition-colors"
+            className="flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-ink-muted hover:text-ink-text hover:bg-ink-surface transition-colors"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
-            <span className="hidden sm:inline">Lock</span>
+            <LockIcon className="w-4 h-4" />
+            <span className="hidden md:inline">Lock</span>
           </button>
         </div>
 
-        {/* Mobile tab bar — visible only on small screens */}
-        <nav className="sm:hidden flex border-t border-slate-800" aria-label="Mobile navigation">
+        {/* Mobile tab bar — visible only on small screens. aria-current added in
+            3.2 so screen readers hear the current tab here too, as on desktop */}
+        <nav className="md:hidden flex border-t border-ink-border" aria-label="Mobile navigation">
           {TABS.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
+              aria-current={activeTab === tab.id ? 'page' : undefined}
               className={`
-                flex-1 py-2.5 text-xs font-medium flex flex-col items-center gap-0.5
+                flex-1 py-2.5 text-xs font-medium flex flex-col items-center gap-1
                 ${activeTab === tab.id
-                  ? 'text-brand-500 border-t-2 border-brand-500 -mt-px'
-                  : 'text-slate-500'
+                  ? 'text-ink-text border-t-2 border-ink-text -mt-px'
+                  : 'text-ink-muted'
                 }
               `}
             >
-              <span aria-hidden="true">{tab.icon}</span>
+              <tab.Icon className="w-5 h-5" />
               {tab.label}
             </button>
           ))}
@@ -154,7 +157,7 @@ export default function VaultPage() {
       </main>
 
       {/* ── Footer ──────────────────────────────────────────────────────── */}
-      <footer className="border-t border-slate-800 py-3 text-center text-xs text-slate-600">
+      <footer className="bg-ink py-3 text-center text-xs text-ink-subtle">
         Lokr — Your secrets, your machine. &nbsp;·&nbsp; All data stays local.
       </footer>
     </div>
