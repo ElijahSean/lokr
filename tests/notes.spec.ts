@@ -9,38 +9,42 @@ import {
   noteMatches,
   NOTE_TITLE_MAX,
   NOTE_BODY_MAX,
+  NOTE_BLOB_MAX_BYTES,
   NOTE_COLOURS,
   NEW_NOTE_COLOUR,
   FALLBACK_NOTE_COLOUR,
   type NoteContent,
 } from '@/lib/notes'
+import { plainTextToDocument } from '@/lib/noteDoc'
 import { encryptEntry, decryptEntry } from '@/lib/crypto'
 
 const NOTE: NoteContent = {
   title: 'Wi-Fi',
-  body: 'SSID: home\nPassword: hunter2\n\n  indented line',
+  body: plainTextToDocument('SSID: home\nPassword: hunter2\n\n  indented line'),
+  fontFamily: 'sans',
+  fontSize: 'normal',
   colour: 'green',
   pinned: true,
   lined: true,
 }
 
 describe('encodeNote / decodeNote', () => {
-  it('round-trips title, body, colour and pinned, line breaks kept', () => {
+  it('round-trips rich content and presentation fields', () => {
     expect(decodeNote(encodeNote(NOTE))).toEqual(NOTE)
   })
 
-  it('marks the body format as plain for the 2.2 conversion', () => {
-    expect(JSON.parse(encodeNote(NOTE))).toMatchObject({ v: 1, format: 'plain' })
+  it('writes the version 2 rich format', () => {
+    expect(JSON.parse(encodeNote(NOTE))).toMatchObject({ v: 2, format: 'rich' })
   })
 
   it('accepts a title and body exactly at the caps', () => {
-    const atCap = { ...NOTE, title: 't'.repeat(NOTE_TITLE_MAX), body: 'b'.repeat(NOTE_BODY_MAX) }
+    const atCap = { ...NOTE, title: 't'.repeat(NOTE_TITLE_MAX), body: plainTextToDocument('b'.repeat(NOTE_BODY_MAX)) }
     expect(decodeNote(encodeNote(atCap))).toEqual(atCap)
   })
 
   it('rejects an over-length title or body on encode', () => {
     expect(() => encodeNote({ ...NOTE, title: 't'.repeat(NOTE_TITLE_MAX + 1) })).toThrow()
-    expect(() => encodeNote({ ...NOTE, body: 'b'.repeat(NOTE_BODY_MAX + 1) })).toThrow()
+    expect(() => encodeNote({ ...NOTE, body: plainTextToDocument('b'.repeat(NOTE_BODY_MAX + 1)) })).toThrow()
   })
 
   it('rejects an over-length title or body on decode', () => {
@@ -52,9 +56,41 @@ describe('encodeNote / decodeNote', () => {
     expect(() => decodeNote('null')).toThrow()
     expect(() => decodeNote('"text"')).toThrow()
     expect(() => decodeNote('not json')).toThrow()
-    expect(() => decodeNote(JSON.stringify({ v: 2, format: 'plain', title: '', body: '', colour: 'yellow', pinned: false }))).toThrow()
-    expect(() => decodeNote(JSON.stringify({ v: 1, format: 'rich', title: '', body: '', colour: 'yellow', pinned: false }))).toThrow()
+    expect(() => decodeNote(JSON.stringify({ v: 3, format: 'rich', title: '', body: {}, colour: 'yellow', pinned: false }))).toThrow()
+    expect(() => decodeNote(JSON.stringify({ v: 2, format: 'rich', title: '', body: null, colour: 'yellow', pinned: false }))).toThrow()
     expect(() => decodeNote(JSON.stringify({ v: 1, format: 'plain', title: 1, body: '', colour: 'yellow', pinned: false }))).toThrow()
+  })
+
+  it('converts a 2.1 plain blob in memory and applies presentation defaults', () => {
+    const legacy = JSON.stringify({
+      v: 1,
+      format: 'plain',
+      title: 'Old note',
+      body: 'first\n\nlast',
+      colour: 'blue',
+      pinned: false,
+      lined: true,
+    })
+    const decoded = decodeNote(legacy)
+    expect(decoded.body).toEqual(plainTextToDocument('first\n\nlast'))
+    expect(decoded.fontFamily).toBe('sans')
+    expect(decoded.fontSize).toBe('normal')
+    expect(JSON.parse(encodeNote(decoded))).toMatchObject({ v: 2, format: 'rich' })
+  })
+
+  it('falls back to safe presentation values in a rich blob', () => {
+    const blob = JSON.stringify({
+      ...JSON.parse(encodeNote(NOTE)),
+      fontFamily: 'remote-web-font',
+      fontSize: 'enormous',
+    })
+    expect(decodeNote(blob)).toMatchObject({ fontFamily: 'sans', fontSize: 'normal' })
+  })
+
+  it('refuses a formatted blob over 256 KiB even below the text cap', () => {
+    const body = { type: 'doc' as const, content: Array.from({ length: 13_000 }, () => ({ type: 'paragraph' })) }
+    expect(new TextEncoder().encode(JSON.stringify(body)).byteLength).toBeGreaterThan(NOTE_BLOB_MAX_BYTES)
+    expect(() => encodeNote({ ...NOTE, body })).toThrow('256 KB')
   })
 
   it('falls back to yellow for an unknown colour', () => {
@@ -89,6 +125,8 @@ describe('encodeNote / decodeNote', () => {
     const second = await encryptEntry(key, encodeNote(NOTE))
     expect(first.iv).not.toBe(second.iv)
     expect(first.ciphertext).not.toBe(second.ciphertext)
+    expect(first.ciphertext).not.toContain('Wi-Fi')
+    expect(first.ciphertext).not.toContain('hunter2')
     expect(decodeNote(await decryptEntry(key, first.ciphertext, first.iv))).toEqual(NOTE)
   })
 })

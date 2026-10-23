@@ -79,16 +79,24 @@ module.exports = {
         serif: ['Georgia', 'Cambria', '"Times New Roman"', 'serif'],
       },
       // Notebook-paper ruled lines for lined sticky notes (task 2.1). The spacing
-      // matches the text's line height (leading-7 in the open note, leading-4
+      // matches each rich-editor size (leading-6/7/8 in the open note, leading-4
       // on cards) so text sits on the lines; used with bg-local so they scroll.
       backgroundImage: {
+        'notebook-lines-tight':
+          'repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.5rem - 1px), rgb(0 0 0 / 0.14) calc(1.5rem - 1px), rgb(0 0 0 / 0.14) 1.5rem)',
         'notebook-lines':
           'repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.75rem - 1px), rgb(0 0 0 / 0.14) calc(1.75rem - 1px), rgb(0 0 0 / 0.14) 1.75rem)',
+        'notebook-lines-loose':
+          'repeating-linear-gradient(to bottom, transparent 0, transparent calc(2rem - 1px), rgb(0 0 0 / 0.14) calc(2rem - 1px), rgb(0 0 0 / 0.14) 2rem)',
         'notebook-lines-sm':
           'repeating-linear-gradient(to bottom, transparent 0, transparent calc(1rem - 1px), rgb(0 0 0 / 0.12) calc(1rem - 1px), rgb(0 0 0 / 0.12) 1rem)',
         // The same rulings in white, for the black paper (task 2.8)
         'notebook-lines-light':
           'repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.75rem - 1px), rgb(255 255 255 / 0.14) calc(1.75rem - 1px), rgb(255 255 255 / 0.14) 1.75rem)',
+        'notebook-lines-light-tight':
+          'repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.5rem - 1px), rgb(255 255 255 / 0.14) calc(1.5rem - 1px), rgb(255 255 255 / 0.14) 1.5rem)',
+        'notebook-lines-light-loose':
+          'repeating-linear-gradient(to bottom, transparent 0, transparent calc(2rem - 1px), rgb(255 255 255 / 0.14) calc(2rem - 1px), rgb(255 255 255 / 0.14) 2rem)',
         'notebook-lines-light-sm':
           'repeating-linear-gradient(to bottom, transparent 0, transparent calc(1rem - 1px), rgb(255 255 255 / 0.12) calc(1rem - 1px), rgb(255 255 255 / 0.12) 1rem)',
       },

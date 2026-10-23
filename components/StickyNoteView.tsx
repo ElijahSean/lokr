@@ -11,7 +11,7 @@
  * discarding unsaved changes; while a confirm is showing, Escape cancels it.
  *
  * Layout (task 3.4): a top bar (Close; Saved, Delete, Save) over a tool row
- * (colour, Pin, Lined; 2.2's formatting buttons join it later), both on the
+ * (colour, Pin, Lined and task 2.2's grouped formatting controls), both on the
  * paper with a thin divider. A confirm takes the tool row's place, so the top
  * bar never has to wrap on a phone.
  */
@@ -28,6 +28,14 @@ import {
 } from '@/lib/notes'
 import { CloseIcon, LinesIcon, PinIcon, TrashIcon, WarningIcon } from '@/components/Icons'
 import { DANGER_OUTLINE, DANGER_OUTLINE_ON_DARK } from '@/components/ui'
+import {
+  NOTE_FONT_FAMILIES,
+  NOTE_FONT_SIZES,
+  documentToPlainText,
+  type NoteFontFamily,
+  type NoteFontSize,
+} from '@/lib/noteDoc'
+import { NoteEditorSurface, NoteFormattingToolbar, useNoteEditor } from './NoteEditor'
 
 /** Which text a paper takes: dark text on the light papers, light text on black (task 2.8). */
 export type NoteTone = 'dark-text' | 'light-text'
@@ -62,7 +70,7 @@ export const TONE_CLASSES: Record<NoteTone, {
   // muted: "Saved"; faint: the footer, the card's date and "Untitled"
   text: string; secondary: string; muted: string; faint: string; placeholder: string
   hover: string; pressed: string; swatchRing: string; focusRing: string; divider: string
-  lines: string; linesSm: string; danger: string; dangerIcon: string; save: string
+  linesTight: string; lines: string; linesLoose: string; linesSm: string; danger: string; dangerIcon: string; save: string
 }> = {
   // Slate text: dark on the light papers, light in dark mode (task 3.1), where these
   // papers turn into dark tints, so the translucent hovers, divider and ruled lines
@@ -73,7 +81,10 @@ export const TONE_CLASSES: Record<NoteTone, {
     swatchRing: 'border-slate-100 ring-2 ring-slate-100', focusRing: 'focus:ring-brand-500',
     // Translucent, like the hovers, so one class suits every paper (no new hex)
     divider: 'border-black/10 dark:border-white/10',
-    lines: 'bg-notebook-lines dark:bg-notebook-lines-light', linesSm: 'bg-notebook-lines-sm dark:bg-notebook-lines-light-sm',
+    linesTight: 'bg-notebook-lines-tight dark:bg-notebook-lines-light-tight',
+    lines: 'bg-notebook-lines dark:bg-notebook-lines-light',
+    linesLoose: 'bg-notebook-lines-loose dark:bg-notebook-lines-light-loose',
+    linesSm: 'bg-notebook-lines-sm dark:bg-notebook-lines-light-sm',
     // Warnings are main text with a status-coloured icon, never red text (3.4, as 3.5)
     danger: DANGER_OUTLINE, dangerIcon: 'text-danger',
     save: 'bg-brand-500 hover:bg-brand-600 text-brand-label',
@@ -86,7 +97,8 @@ export const TONE_CLASSES: Record<NoteTone, {
     hover: 'hover:bg-white/10', pressed: 'bg-white/15', swatchRing: 'border-ink-text ring-2 ring-ink-text',
     focusRing: 'focus:ring-brand-500 focus:ring-offset-2 focus:ring-offset-slate-950',
     divider: 'border-white/10',
-    lines: 'bg-notebook-lines-light', linesSm: 'bg-notebook-lines-light-sm',
+    linesTight: 'bg-notebook-lines-light-tight', lines: 'bg-notebook-lines-light',
+    linesLoose: 'bg-notebook-lines-light-loose', linesSm: 'bg-notebook-lines-light-sm',
     danger: DANGER_OUTLINE_ON_DARK, dangerIcon: 'text-danger-dark',
     save: 'bg-ink-text hover:bg-white text-ink',
   },
@@ -104,7 +116,8 @@ interface StickyNoteViewProps {
 type Confirm = 'none' | 'discard' | 'delete'
 
 function sameContent(a: NoteContent, b: NoteContent): boolean {
-  return a.title === b.title && a.body === b.body && a.colour === b.colour &&
+  return a.title === b.title && JSON.stringify(a.body) === JSON.stringify(b.body) &&
+    a.fontFamily === b.fontFamily && a.fontSize === b.fontSize && a.colour === b.colour &&
     a.pinned === b.pinned && a.lined === b.lined
 }
 
@@ -121,6 +134,8 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
   const isDirty = unsaved || !sameContent(draft, saved)
   const classes = NOTE_CLASSES[draft.colour]
   const tone = TONE_CLASSES[classes.tone]
+  const editor = useNoteEditor(initial.body, body => update({ body }))
+  const plainBody = documentToPlainText(draft.body)
 
   // Focus the title on open; the parent returns focus to the card on close.
   useEffect(() => { titleRef.current?.focus() }, [])
@@ -257,6 +272,33 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
                 <LinesIcon />
                 Lined
               </button>
+
+              <label className="sr-only" htmlFor="note-font-family">Font family</label>
+              <select
+                id="note-font-family"
+                value={draft.fontFamily}
+                onChange={event => update({ fontFamily: event.target.value as NoteFontFamily })}
+                className={`rounded-full border border-current bg-transparent px-2 py-1.5 text-sm ${tone.text} focus:outline-none focus:ring-2 focus:ring-brand-500`}
+              >
+                {NOTE_FONT_FAMILIES.map(font => <option key={font} value={font}>{font === 'mono' ? 'Monospace' : `${font[0].toUpperCase()}${font.slice(1)}`}</option>)}
+              </select>
+
+              <label className="sr-only" htmlFor="note-font-size">Text size</label>
+              <select
+                id="note-font-size"
+                value={draft.fontSize}
+                onChange={event => update({ fontSize: event.target.value as NoteFontSize })}
+                className={`rounded-full border border-current bg-transparent px-2 py-1.5 text-sm ${tone.text} focus:outline-none focus:ring-2 focus:ring-brand-500`}
+              >
+                {NOTE_FONT_SIZES.map(size => <option key={size} value={size}>{`${size[0].toUpperCase()}${size.slice(1)}`}</option>)}
+              </select>
+
+              <span className={`mx-1 hidden h-5 border-l lg:block ${tone.divider}`} aria-hidden="true" />
+              <NoteFormattingToolbar
+                editor={editor}
+                buttonClass={`${pill} disabled:cursor-not-allowed disabled:opacity-40 ${tone.text} ${tone.hover}`}
+                activeClass={tone.pressed}
+              />
             </>
           )}
 
@@ -316,24 +358,20 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
           autoComplete="off"
           className={`w-full bg-transparent text-2xl font-semibold ${tone.text} ${tone.placeholder} focus:outline-none mb-4`}
         />
-        <textarea
-          value={draft.body}
-          onChange={e => update({ body: e.target.value })}
-          maxLength={NOTE_BODY_MAX}
-          placeholder="Write something…"
-          aria-label="Note"
-          autoComplete="off"
-          // Chrome's enhanced spell check sends text to a server; notes hold secrets
-          spellCheck={false}
-          // leading-7 matches the 1.75rem ruling; bg-local makes the lines scroll with the text
-          className={`flex-1 w-full bg-transparent resize-none text-base leading-7 ${tone.text} ${tone.placeholder} focus:outline-none ${
-            draft.lined ? `${tone.lines} bg-local` : ''
-          }`}
+        <NoteEditorSurface
+          editor={editor}
+          fontFamily={draft.fontFamily}
+          fontSize={draft.fontSize}
+          tone={classes.tone}
+          textClass={tone.text}
+          placeholderClass={tone.placeholder}
+          linedClass={draft.fontSize === 'small' ? tone.linesTight : draft.fontSize === 'large' ? tone.linesLoose : tone.lines}
+          lined={draft.lined}
         />
         <div className={`flex items-center justify-between gap-4 pt-2 text-xs ${tone.faint}`}>
           {/* Task 2.7: switching tabs or minimising doesn't lock while a note is open */}
           <p>Stays unlocked while open · locks after 5 min idle</p>
-          <p>{draft.body.length.toLocaleString('en-US')} / {NOTE_BODY_MAX.toLocaleString('en-US')}</p>
+          <p>{plainBody.length.toLocaleString('en-US')} / {NOTE_BODY_MAX.toLocaleString('en-US')}</p>
         </div>
       </div>
     </div>

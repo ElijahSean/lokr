@@ -31,6 +31,7 @@ import {
   type NoteContent,
 } from '@/lib/notes'
 import StickyNoteView, { NOTE_CLASSES, TONE_CLASSES, type NoteTone } from './StickyNoteView'
+import { DEFAULT_NOTE_FONT_FAMILY, DEFAULT_NOTE_FONT_SIZE, documentToPlainText, plainTextToDocument } from '@/lib/noteDoc'
 import { GridIcon, ListIcon, NotesIcon, PinIcon, PlusIcon, SearchIcon, WarningIcon } from '@/components/Icons'
 import { ERROR_BANNER, PRIMARY_BUTTON, SEGMENT, SEGMENTED, SEGMENT_OFF, SEGMENT_ON } from '@/components/ui'
 
@@ -47,7 +48,15 @@ interface OpenNote {
   content: NoteContent
 }
 
-const NEW_NOTE: NoteContent = { title: '', body: '', colour: NEW_NOTE_COLOUR, pinned: false, lined: false }
+const NEW_NOTE: NoteContent = {
+  title: '',
+  body: plainTextToDocument(''),
+  fontFamily: DEFAULT_NOTE_FONT_FAMILY,
+  fontSize: DEFAULT_NOTE_FONT_SIZE,
+  colour: NEW_NOTE_COLOUR,
+  pinned: false,
+  lined: false,
+}
 
 // Grid of square cards, or a compact list. Not remembered between visits:
 // CLAUDE.md forbids localStorage, and a view mode isn't worth an IndexedDB field.
@@ -275,7 +284,7 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
               return (
                 <div key={note.id} className="aspect-square rounded-2xl bg-slate-900 p-4 flex flex-col items-center justify-center gap-2 text-center">
                   <WarningIcon className="h-5 w-5 text-danger" />
-                  <p className="text-sm text-primary">Couldn&apos;t decrypt this note.</p>
+                  <p className="text-sm text-primary">Couldn&apos;t read this note.</p>
                 </div>
               )
             }
@@ -296,7 +305,7 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
                   <span className={`block mt-1.5 text-xs leading-4 ${tone.secondary} whitespace-pre-wrap break-words overflow-hidden flex-1 ${
                     content.lined ? tone.linesSm : ''
                   }`}>
-                    {content.body}
+                    {documentToPlainText(content.body)}
                   </span>
                   <span className={`block mt-2 text-xs ${tone.faint}`}>
                     {note.updatedAt.toLocaleDateString()}
@@ -317,12 +326,12 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
               return (
                 <li key={note.id} className="flex items-center gap-3 px-5 py-3.5 text-sm text-primary">
                   <WarningIcon className="h-4 w-4 flex-shrink-0 text-danger" />
-                  Couldn&apos;t decrypt this note.
+                  Couldn&apos;t read this note.
                 </li>
               )
             }
             const content = note.content
-            const firstLine = content.body.split('\n').find(l => l.trim()) ?? ''
+            const firstLine = documentToPlainText(content.body).split('\n').find(line => line.trim()) ?? ''
             return (
               <li key={note.id} className="relative flex items-center">
                 <button

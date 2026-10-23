@@ -248,6 +248,11 @@ for (const theme of ['light', 'dark'] as const) {
         expectVisible(outline.border, paper.DEFAULT)
         expectVisible(danger, paper.DEFAULT)
       })
+
+      it(`rich-editor table boundaries stay visible on the ${name} paper`, () => {
+        // NoteEditor uses slate-100 for cell borders on every non-black paper.
+        expectVisible(slate[100], paper.DEFAULT)
+      })
     }
 
     // Light only: the strip was a text surface until 3.4 took the band off. It is now
@@ -271,6 +276,8 @@ for (const theme of ['light', 'dark'] as const) {
     it("the black paper's warning icon and outline stay visible", () => {
       expectVisible(statusDark.danger, note.black.DEFAULT)
       expectVisible(twColors.red[400], note.black.DEFAULT)
+      // NoteEditor uses ink.text for table cell borders on black.
+      expectVisible(ink.text, note.black.DEFAULT)
     })
 
     it('the five coloured papers stay distinguishable from each other', () => {
