@@ -36,7 +36,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useSession } from '@/hooks/useSession'
-import { db, countStickyNotes, clearStickyNotes } from '@/lib/db'
+import { db, countStickyNotes, clearAllVaultData } from '@/lib/db'
 import { downloadVaultFile, restoreVaultFile, exportCSV } from '@/lib/export'
 import { CheckIcon, ClockIcon, DownloadIcon, TrashIcon, UploadIcon, WarningIcon } from '@/components/Icons'
 import {
@@ -174,19 +174,11 @@ export default function ExportImport() {
     setResetError(null)
 
     try {
-      // Wipe all IndexedDB tables
-      await db.vault_entries.clear()
-      await db.health_flags.clear()
-      await db.password_history.clear()
-      // Notes must go too: left behind under the old key, a new vault's next
-      // re-sign would include them and its unlock would be refused.
-      await clearStickyNotes()
-      await db.vault_meta.clear()
-      // Lock vault and redirect to /
+      // The database helper owns one transaction across every store, so a
+      // failed clear rolls the whole wipe back before this success-only lock.
+      await clearAllVaultData()
       lock()
     } catch (err) {
-      // The tables are cleared one after another, so a failure partway may have
-      // deleted some of them already: say so rather than imply nothing changed
       setResetError(err instanceof Error ? err.message : 'Unknown error')
       setIsResetting(false)
     }
@@ -467,8 +459,7 @@ export default function ExportImport() {
           <div className={ERROR_BANNER} role="alert">
             <WarningIcon className="w-4 h-4 mt-0.5 flex-shrink-0 text-danger" />
             <span>
-              Reset stopped partway: {resetError}. Some data may already be deleted;
-              try again to finish the wipe.
+              Reset failed: {resetError}. No data was deleted; your vault is unchanged.
             </span>
           </div>
         )}

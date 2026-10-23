@@ -148,6 +148,27 @@ class LokrDatabase extends Dexie {
 // Never instantiate LokrDatabase directly elsewhere.
 export const db = new LokrDatabase()
 
+// ─── Full Reset ────────────────────────────────────────────────────────────────────────────
+
+/** Clears every Lokr store atomically so a failed reset cannot leave a partial vault. */
+export async function clearAllVaultData(): Promise<void> {
+  await db.transaction(
+    'rw',
+    db.vault_entries,
+    db.health_flags,
+    db.password_history,
+    db.sticky_notes,
+    db.vault_meta,
+    async () => {
+      await db.vault_entries.clear()
+      await db.health_flags.clear()
+      await db.password_history.clear()
+      await db.sticky_notes.clear()
+      await db.vault_meta.clear()
+    },
+  )
+}
+
 // ─── Sticky Notes ─────────────────────────────────────────────────────────────
 // Notes go through these helpers, not Dexie in components (CLAUDE.md: all DB
 // operations through lib/db.ts). Callers pass ciphertext only and must call
