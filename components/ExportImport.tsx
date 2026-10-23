@@ -145,12 +145,13 @@ export default function ExportImport() {
 
       // Derives keys from the FILE's salt + the entered password, verifies the
       // HMAC, replaces all local data, and re-signs the vault.
-      const { count, encryptionKey: newEncKey, hmacKey: newHmacKey } =
+      const { count, encryptionKey: newEncKey, hmacKey: newHmacKey, lastBackupAt } =
         await restoreVaultFile(importPassword, content)
 
       // The restored vault may have a different salt/password than the current
       // session — swap in the keys that actually match the restored data.
       adoptSessionKeys(newEncKey, newHmacKey)
+      setLastBackupDate(lastBackupAt)
 
       setImportResult({ count })
       setImportFile(null)

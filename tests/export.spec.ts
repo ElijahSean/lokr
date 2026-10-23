@@ -281,11 +281,29 @@ describe('version-2 .vault export and restore', () => {
 
     const meta = await db.vault_meta.get(1)
     expect(meta?.hmacSignature).toBeTruthy()
+    expect(meta?.lastBackupAt?.toISOString()).toBe('2024-04-02T00:00:00.000Z')
+    expect(result.lastBackupAt.getTime()).toBe(meta?.lastBackupAt?.getTime())
+    expect(meta?.failedAttempts).toBe(0)
+    expect(meta?.lastFailedAt).toBeUndefined()
     expect(await verifyVault(
       result.hmacKey,
       buildVaultPayload(SALT, storedEntries),
       meta!.hmacSignature!,
     )).toBe(true)
+  }, SLOW)
+
+  it('records the restore time when no backup date exists', async () => {
+    const { content } = await seedSourceVault()
+    const startedAt = Date.now()
+
+    const result = await restoreVaultFile(PASSWORD, content)
+
+    const completedAt = Date.now()
+    const meta = await db.vault_meta.get(1)
+    const storedTime = meta?.lastBackupAt?.getTime()
+    expect(storedTime).toBeGreaterThanOrEqual(startedAt)
+    expect(storedTime).toBeLessThanOrEqual(completedAt)
+    expect(result.lastBackupAt.getTime()).toBe(storedTime)
   }, SLOW)
 
   it('restores an old version-1 backup with empty history', async () => {
@@ -339,6 +357,16 @@ const TAMPER_CASES: TamperCase[] = [
 ]
 
 describe('restore rejects untrusted backups before writing', () => {
+  it('rejects malformed JSON without changing local data', async () => {
+    await seedDestinationVault()
+    const before = await databaseSnapshot()
+
+    await expect(restoreVaultFile(PASSWORD, 'not JSON')).rejects.toThrow(
+      'Invalid .vault file: not valid JSON.',
+    )
+    expect(await databaseSnapshot()).toBe(before)
+  })
+
   it.each(TAMPER_CASES)('$name', async ({ password = PASSWORD, mutate }) => {
     const { content } = await seedSourceVault()
     const file = parseV2(content)

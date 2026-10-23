@@ -188,6 +188,7 @@ export interface RestoreResult {
   count: number             // Number of entries restored
   encryptionKey: CryptoKey  // Keys derived from the FILE's salt — the caller must
   hmacKey: CryptoKey        // adopt these as the new session keys
+  lastBackupAt: Date        // Exact timestamp retained or established by restore
 }
 
 /**
@@ -280,6 +281,11 @@ export async function restoreVaultFile(
     }
   }
 
+  // Preserve truthful local backup history only after untrusted input passes
+  // every fail-closed check; a fresh destination knows of this restored backup now.
+  const previousMeta = await db.vault_meta.get(1)
+  const lastBackupAt = previousMeta?.lastBackupAt ?? new Date()
+
   // Replace local data only after every structural, HMAC and AES check above.
   // Sticky notes still clear because backups do not carry them until task 2.3.
   await db.vault_entries.clear()
@@ -326,9 +332,10 @@ export async function restoreVaultFile(
     salt,
     hmacSignature: newSignature,
     failedAttempts: 0,
+    lastBackupAt,
   })
 
-  return { count: entries.length, encryptionKey, hmacKey }
+  return { count: entries.length, encryptionKey, hmacKey, lastBackupAt }
 }
 
 // ─── Export: Plaintext CSV ────────────────────────────────────────────────────
