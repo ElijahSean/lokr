@@ -322,7 +322,7 @@ export default function VaultList() {
           </div>
           <button
             onClick={openAddModal}
-            className="flex items-center gap-2 whitespace-nowrap rounded-full bg-brand-500 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-600"
+            className="flex items-center gap-2 whitespace-nowrap rounded-full bg-brand-500 px-5 py-2.5 text-sm font-medium text-brand-label transition-colors hover:bg-brand-600"
           >
             <PlusIcon />
             Add Entry
@@ -353,7 +353,7 @@ export default function VaultList() {
             <p className="mb-6 text-sm text-slate-500">Add your first password to get started.</p>
             <button
               onClick={openAddModal}
-              className="rounded-full bg-brand-500 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-600"
+              className="rounded-full bg-brand-500 px-6 py-2.5 text-sm font-medium text-brand-label transition-colors hover:bg-brand-600"
             >
               Add Your First Entry
             </button>
@@ -388,11 +388,12 @@ export default function VaultList() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
           onClick={e => { if (e.target === e.currentTarget) closeModal() }}
         >
+          {/* dark: hairline, since the shadow doesn't show on the dark page (task 3.1) */}
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="entry-dialog-title"
-            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl bg-slate-950 shadow-2xl animate-fade-in"
+            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl bg-slate-950 shadow-2xl animate-fade-in dark:border dark:border-slate-700"
           >
             {/* Header */}
             <div className="sticky top-0 z-10 flex items-center justify-between bg-slate-950 px-6 pb-3 pt-5">
@@ -586,10 +587,10 @@ export default function VaultList() {
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-full bg-brand-500 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:bg-slate-700 disabled:text-slate-500"
+                  className="flex flex-1 items-center justify-center gap-2 rounded-full bg-brand-500 py-2.5 text-sm font-medium text-brand-label transition-colors hover:bg-brand-600 disabled:bg-slate-700 disabled:text-slate-500"
                 >
                   {isSaving ? (
-                    <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Saving…</>
+                    <><div className="h-4 w-4 animate-spin rounded-full border-2 border-brand-label border-t-transparent" /> Saving…</>
                   ) : (
                     editingEntry ? 'Save Changes' : 'Add Entry'
                   )}

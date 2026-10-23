@@ -257,7 +257,7 @@ export default function ExportImport() {
           className={`${PRIMARY_BUTTON} w-full`}
         >
           {isExporting ? (
-            <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Exporting…</>
+            <><span className="w-4 h-4 border-2 border-brand-label border-t-transparent rounded-full animate-spin" /> Exporting…</>
           ) : exportSuccess ? (
             <><CheckIcon className="w-4 h-4" /> Saved</>
           ) : (

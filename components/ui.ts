@@ -10,12 +10,14 @@
 // so destructive actions are an outline instead, paired with a <WarningIcon />.
 // Colour, border and icon spacing only: each button keeps its own size and shape.
 // The translucent hover reads on any background (card, red panel, note paper).
+// In dark mode (task 3.1) it takes DANGER_OUTLINE_ON_DARK's red-400, below.
 export const DANGER_OUTLINE =
   'inline-flex items-center justify-center gap-1.5 border border-red-600 text-red-700 ' +
   'bg-transparent hover:bg-red-600/10 transition-colors ' +
+  'dark:border-red-400 dark:text-red-400 dark:hover:bg-red-400/10 ' +
   'disabled:border-slate-700 disabled:text-slate-500 disabled:hover:bg-transparent'
 
-// The same on a dark surface (the black note paper, task 2.8; dark mode in 3.1):
+// The same on a surface that is dark in both themes (the black note paper, task 2.8):
 // red-700 is unreadable on #121212, red-400 is 6.8:1 (tests/theme.spec.ts)
 export const DANGER_OUTLINE_ON_DARK =
   'inline-flex items-center justify-center gap-1.5 border border-red-400 text-red-400 ' +
@@ -93,10 +95,11 @@ export const SEGMENT =
 export const SEGMENT_ON = 'bg-slate-950 text-primary shadow-sm'
 export const SEGMENT_OFF = 'text-slate-400 hover:text-primary'
 
-// Main and quiet buttons on the light parts (3.3's dialog Save and Cancel)
+// Main and quiet buttons on the light parts (3.3's dialog Save and Cancel). The
+// label is `brand-label`, white on graphite and dark on dark mode's warm-white pill (3.1)
 export const PRIMARY_BUTTON =
   'inline-flex items-center justify-center gap-2 rounded-full bg-brand-500 px-5 py-2.5 text-sm font-medium ' +
-  'text-white transition-colors hover:bg-brand-600 disabled:bg-slate-700 disabled:text-slate-500'
+  'text-brand-label transition-colors hover:bg-brand-600 disabled:bg-slate-700 disabled:text-slate-500'
 export const QUIET_BUTTON =
   'inline-flex items-center justify-center gap-2 rounded-full bg-slate-800 px-5 py-2.5 text-sm font-medium ' +
   'text-slate-300 transition-colors hover:bg-slate-700 hover:text-primary'

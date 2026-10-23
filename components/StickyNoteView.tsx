@@ -48,7 +48,9 @@ export const NOTE_CLASSES: Record<NoteColour, { paper: string; strip: string; sw
   orange: { paper: 'bg-note-orange', strip: 'bg-note-orange-strip', swatch: 'bg-note-orange-strip', label: 'Orange', tone: 'dark-text', edge: '' },
   white:  { paper: 'bg-note-white',  strip: 'bg-note-white-strip',  swatch: 'bg-note-white-strip',  label: 'White',  tone: 'dark-text', edge: 'border border-slate-700' },
   grey:   { paper: 'bg-note-grey',   strip: 'bg-note-grey-strip',   swatch: 'bg-note-grey-strip',   label: 'Grey',   tone: 'dark-text', edge: 'border border-slate-700' },
-  black:  { paper: 'bg-note-black',  strip: 'bg-note-black-strip',  swatch: 'bg-note-black-strip',  label: 'Black',  tone: 'light-text', edge: '' },
+  // In dark mode the black paper is the dark card colour on the near-black page, so
+  // it gets the hairline there too (task 3.1)
+  black:  { paper: 'bg-note-black',  strip: 'bg-note-black-strip',  swatch: 'bg-note-black-strip',  label: 'Black',  tone: 'light-text', edge: 'dark:border dark:border-slate-700' },
 }
 
 /**
@@ -62,21 +64,27 @@ export const TONE_CLASSES: Record<NoteTone, {
   hover: string; pressed: string; swatchRing: string; focusRing: string; divider: string
   lines: string; linesSm: string; danger: string; dangerIcon: string; save: string
 }> = {
+  // Slate text: dark on the light papers, light in dark mode (task 3.1), where these
+  // papers turn into dark tints, so the translucent hovers, divider and ruled lines
+  // switch from black to white under `dark:`
   'dark-text': {
     text: 'text-primary', secondary: 'text-slate-300', muted: 'text-slate-400', faint: 'text-slate-500', placeholder: 'placeholder-slate-500',
-    hover: 'hover:bg-black/5', pressed: 'bg-black/10', swatchRing: 'border-slate-100 ring-2 ring-slate-100', focusRing: 'focus:ring-brand-500',
-    // Translucent, like the hovers, so one class suits every light paper (no new hex)
-    divider: 'border-black/10',
-    lines: 'bg-notebook-lines', linesSm: 'bg-notebook-lines-sm',
+    hover: 'hover:bg-black/5 dark:hover:bg-white/10', pressed: 'bg-black/10 dark:bg-white/15',
+    swatchRing: 'border-slate-100 ring-2 ring-slate-100', focusRing: 'focus:ring-brand-500',
+    // Translucent, like the hovers, so one class suits every paper (no new hex)
+    divider: 'border-black/10 dark:border-white/10',
+    lines: 'bg-notebook-lines dark:bg-notebook-lines-light', linesSm: 'bg-notebook-lines-sm dark:bg-notebook-lines-light-sm',
     // Warnings are main text with a status-coloured icon, never red text (3.4, as 3.5)
     danger: DANGER_OUTLINE, dangerIcon: 'text-danger',
-    save: 'bg-brand-500 hover:bg-brand-600 text-white',
+    save: 'bg-brand-500 hover:bg-brand-600 text-brand-label',
   },
   'light-text': {
     text: 'text-ink-text', secondary: 'text-ink-muted', muted: 'text-ink-muted', faint: 'text-ink-muted', placeholder: 'placeholder-ink-subtle',
-    // The card's focus ring is drawn outside the card, on the white page, so it stays
-    // graphite; the offset leaves a white gap so it doesn't merge with the dark edge
-    hover: 'hover:bg-white/10', pressed: 'bg-white/15', swatchRing: 'border-ink-text ring-2 ring-ink-text', focusRing: 'focus:ring-brand-500 focus:ring-offset-2',
+    // The card's focus ring is drawn outside the card, on the page, so it takes the
+    // page's ring colour; the offset leaves a page-coloured gap (white, or dark in
+    // dark mode, 3.1) so it doesn't merge with the dark edge
+    hover: 'hover:bg-white/10', pressed: 'bg-white/15', swatchRing: 'border-ink-text ring-2 ring-ink-text',
+    focusRing: 'focus:ring-brand-500 focus:ring-offset-2 focus:ring-offset-slate-950',
     divider: 'border-white/10',
     lines: 'bg-notebook-lines-light', linesSm: 'bg-notebook-lines-light-sm',
     danger: DANGER_OUTLINE_ON_DARK, dangerIcon: 'text-danger-dark',

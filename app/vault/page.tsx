@@ -81,7 +81,8 @@ export default function VaultPage() {
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col">
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <header className="bg-ink sticky top-0 z-10">
+      {/* In dark mode the page is the bar's own colour, so a hairline keeps them apart (task 3.1) */}
+      <header className="bg-ink sticky top-0 z-10 dark:border-b dark:border-ink-border">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           {/* Logo + wordmark */}
           <div className="flex items-center gap-2">

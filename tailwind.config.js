@@ -1,3 +1,37 @@
+const plugin = require('tailwindcss/plugin')
+const { light, dark, fixed } = require('./tailwind.palette.js')
+
+// Dark mode (task 3.1): every colour in the palette's `light`/`dark` pair becomes a
+// CSS variable, `--c-slate-100` and so on, holding "r g b" so Tailwind's opacity
+// modifiers still work. The plugin below writes the light values on :root and the
+// dark ones under prefers-color-scheme: dark, so the theme comes from CSS alone:
+// no flash on load, no stored preference, and a live system switch just repaints.
+function hexToRgb(hex) {
+  return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(' ')
+}
+
+// { slate: { 100: '#..' } } → class values { slate: { 100: 'rgb(var(--c-slate-100) / <alpha-value>)' } }
+// and variables { '--c-slate-100': '11 25 38' }. DEFAULT drops out of the name.
+function toVariables(group, path = []) {
+  const classes = {}
+  const vars = {}
+  for (const [key, value] of Object.entries(group)) {
+    const name = [...path, key].filter(part => part !== 'DEFAULT').join('-')
+    if (typeof value === 'string') {
+      classes[key] = `rgb(var(--c-${name}) / <alpha-value>)`
+      vars[`--c-${name}`] = hexToRgb(value)
+    } else {
+      const inner = toVariables(value, [...path, key])
+      classes[key] = inner.classes
+      Object.assign(vars, inner.vars)
+    }
+  }
+  return { classes, vars }
+}
+
+const themed = toVariables(light)
+const darkVars = toVariables(dark).vars
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   // Only include CSS for classes actually used in source files (tree-shaking)
@@ -6,98 +40,36 @@ module.exports = {
     './components/**/*.{ts,tsx}',
     './hooks/**/*.{ts,tsx}',
   ],
+  // `dark:` follows the system setting, the same media query as the variables;
+  // used only for the few dark-only touches (hairlines, the notes' hovers and lines)
+  darkMode: 'media',
   theme: {
     extend: {
-      // YouVersion colour theme (task 3.2). Values marked "YV" are youversion.com's
-      // own CSS variables (--_colors---*, read 2026-10-23); "derived" ones were tuned
-      // so text keeps WCAG AA contrast (4.5:1), which tests/theme.spec.ts enforces.
+      // YouVersion colour theme (task 3.2) with dark values (task 3.1). The hex
+      // values and their notes live in tailwind.palette.js; tests/theme.spec.ts
+      // checks every text/background pairing in both themes (WCAG AA, 4.5:1).
       colors: {
         // Light parts (everything below the vault's top bar). The scale stays
-        // inverted: high numbers = light backgrounds, low numbers = dark text.
-        // Sticky notes rely on slate-100 staying dark on their pastel paper.
-        slate: {
-          50:  '#ffffff',  // unused, kept so the scale has no gap
-          100: '#0b1926',  // main text (YV black)
-          200: '#232121',  // emphasis text (YV gray-40)
-          300: '#393b3d',  // secondary text, monospace pw display (YV --grey)
-          400: '#4f4c4c',  // labels (derived)
-          500: '#636161',  // muted text, placeholders (YV gray-30)
-          600: '#6a6767',  // faintest text, tick marks (derived: YV gray-25 is too faint on light)
-          700: '#e4dddb',  // borders, strength-meter track (derived)
-          800: '#efe9e7',  // inputs, hover, secondary surfaces (derived)
-          900: '#f7f3f2',  // cards (the site's large rounded panels)
-          950: '#ffffff',  // page (YV white)
-        },
-        primary: '#0b1926',  // main text (YV black)
-        // Buttons and active states on the light parts: neutral graphite, matching
-        // the logo tile (Elijah, 2026-10-23, after trying a red and then a coral).
-        // The name stays `brand` so the ~70 existing classes keep working. On the
-        // dark parts the buttons are warm-white pills (ink.text) instead, since
-        // graphite would vanish there.
-        brand: {
-          50:  '#f4f1f0',
-          100: '#e4dddb',
-          200: '#bfbdbd',  // YV gray-20
-          300: '#828080',  // YV gray-25
-          400: '#636161',  // YV gray-30
-          500: '#232121',  // button fill (YV gray-40), white label 15.9:1
-          600: '#393b3d',  // hover, link text (YV --grey)
-          700: '#1a1818',
-          800: '#121212',
-          900: '#0b0b0b',
-        },
-        // The one colour left: YouVersion's coral, kept small. DEFAULT for focus
-        // rings and icons on the dark parts; `strong` for the logo's keyhole.
-        accent: {
-          DEFAULT: '#e76b4f',  // YV --coral
-          strong:  '#c64c3a',  // derived
-        },
-        // Dark parts: the unlock screen and the vault's top bar and footer, like
-        // youversion.com's dark sections. Kept apart from `slate`, whose inverted
-        // names would paint light-on-light here. Task 3.1 extends these for dark mode.
-        ink: {
-          DEFAULT: '#121212',  // page (YV background-color--alternate)
-          surface: '#232121',  // cards (YV gray-40)
-          raised:  '#2e2b2b',  // inputs and hover on a surface (derived)
-          border:  '#393b3d',  // borders (YV --grey)
-          text:    '#f6efee',  // main text (YV warm-neutral)
-          muted:   '#bfbdbd',  // secondary text (YV gray-20)
-          subtle:  '#828080',  // faintest text, on the ink page only (YV gray-25)
-        },
-        // Status colours (task 3.3): strength weak/fair/strong, duplicate and old
-        // chips, error edges, the "copied" tick. Used for dots, meter bars, icons
-        // and thin edges only, never a fill or text, so they need WCAG's 3:1 for
-        // graphics rather than 4.5:1 (tests/theme.spec.ts checks both kinds). Muted
-        // to sit with the graphite look; `dark` is for the unlock screen's ink.
-        // The "good" level has no status colour: it is a graphite dot.
-        danger: {
-          DEFAULT: '#c64c3a',  // = accent.strong, the logo's keyhole
-          dark:    '#e76b4f',  // = accent (YV --coral)
-        },
-        warning: {
-          DEFAULT: '#9a6a1a',  // derived ochre (Tailwind's amber-600 is 2.65:1 on inputs)
-          dark:    '#d9a441',  // derived
-        },
-        success: {
-          DEFAULT: '#3d7a55',  // derived sage
-          dark:    '#6fbf8a',  // derived
-        },
-        // Sticky-note paper colours (task 2.1). DEFAULT is the paper, `strip` the
-        // slightly darker top band. Values are Tailwind's -100/-200 shades, named
-        // here so dark mode (task 3.1) can retune every note in one place.
-        note: {
-          yellow: { DEFAULT: '#fef9c3', strip: '#fef08a' },
-          green:  { DEFAULT: '#dcfce7', strip: '#bbf7d0' },
-          blue:   { DEFAULT: '#e0f2fe', strip: '#bae6fd' },
-          pink:   { DEFAULT: '#fce7f3', strip: '#fbcfe8' },
-          orange: { DEFAULT: '#ffedd5', strip: '#fed7aa' },
-          // Neutral papers (task 2.8), from the app's own tokens: white is the page
-          // white with a warm-neutral strip, grey is slate-800/700, black is the
-          // ink surface with an ink strip and takes light (`ink`) text
-          white:  { DEFAULT: '#ffffff', strip: '#f6efee' },
-          grey:   { DEFAULT: '#efe9e7', strip: '#e4dddb' },
-          black:  { DEFAULT: '#232121', strip: '#121212' },
-        },
+        // inverted: high numbers = light backgrounds, low numbers = dark text
+        // (dark mode keeps the meaning: high = surfaces, low = text).
+        slate: themed.classes.slate,
+        primary: themed.classes.primary,
+        // Buttons and active states: graphite on light, warm-white pills in dark mode.
+        // The name stays `brand` so the existing classes keep working.
+        brand: { ...fixed.brand, ...themed.classes.brand },
+        accent: fixed.accent,
+        // Dark parts: the unlock screen and the vault's top bar and footer. Kept
+        // apart from `slate`, whose inverted names would paint light-on-light there,
+        // and the same in both themes.
+        ink: fixed.ink,
+        // Status colours (task 3.3): dots, meter bars, icons and thin edges only,
+        // never a fill or text (WCAG's 3:1 for graphics). DEFAULT swaps with the
+        // theme; `dark` is the unlock screen's, fixed.
+        danger:  { DEFAULT: themed.classes.danger,  dark: fixed.statusDark.danger },
+        warning: { DEFAULT: themed.classes.warning, dark: fixed.statusDark.warning },
+        success: { DEFAULT: themed.classes.success, dark: fixed.statusDark.success },
+        // Sticky-note papers (tasks 2.1, 2.8): muted dark tints in dark mode
+        note: themed.classes.note,
       },
       // System fonts only (task 3.2): youversion.com's Aktiv Grotesk and Denton are
       // licensed, and loading any font from the web would be a network call.
@@ -133,5 +105,14 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // The theme's variables, and `color-scheme` so native controls (scrollbars,
+    // the file input, autofill) follow the system too
+    plugin(({ addBase }) => {
+      addBase({
+        ':root': { ...themed.vars, colorScheme: 'light dark' },
+        '@media (prefers-color-scheme: dark)': { ':root': darkVars },
+      })
+    }),
+  ],
 }
