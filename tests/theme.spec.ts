@@ -16,18 +16,23 @@ interface ThemeColors {
   brand: Scale
   accent: Scale
   ink: Scale
+  danger: Scale
+  warning: Scale
+  success: Scale
   note: Record<string, { DEFAULT: string; strip: string }>
 }
 
 // tailwind.config.js is CommonJS (module.exports), so load it with require
 const require = createRequire(import.meta.url)
 const config = require('../tailwind.config.js') as { theme: { extend: { colors: ThemeColors } } }
-const { slate, primary, brand, accent, ink, note } = config.theme.extend.colors
+const { slate, primary, brand, accent, ink, danger, warning, success, note } = config.theme.extend.colors
 // Tailwind's default palette, for the stock reds the danger outlines use
 const twColors = require('tailwindcss/colors') as { red: Scale }
 
 const WHITE = '#ffffff'
 const AA = 4.5
+// WCAG 1.4.11 non-text contrast: dots, meter bars, icons and edges (task 3.3)
+const GRAPHIC = 3
 
 // WCAG 2.x relative luminance of a #rrggbb colour
 function luminance(hex: string): number {
@@ -43,6 +48,10 @@ function contrast(a: string, b: string): number {
 
 function expectReadable(text: string, background: string) {
   expect(contrast(text, background), `${text} on ${background}`).toBeGreaterThanOrEqual(AA)
+}
+
+function expectVisible(graphic: string, background: string) {
+  expect(contrast(graphic, background), `${graphic} on ${background}`).toBeGreaterThanOrEqual(GRAPHIC)
 }
 
 describe('contrast helper', () => {
@@ -93,6 +102,39 @@ describe('dark parts (unlock screen, top bar, footer)', () => {
   it('the faintest text and the coral accent stay readable on the ink page', () => {
     expectReadable(ink.subtle, ink.DEFAULT)
     expectReadable(accent.DEFAULT, ink.DEFAULT)
+  })
+})
+
+describe('status colours (task 3.3)', () => {
+  // Light: dots on chips (slate-800), meter bars on their track (slate-700),
+  // icons and error edges on cards and the page. "good" is a graphite dot.
+  const light = { page: slate[950], card: slate[900], chip: slate[800], track: slate[700] }
+  // Dark: the create-vault strength meter, its bar on the ink-border track
+  const dark = { page: ink.DEFAULT, surface: ink.surface, raised: ink.raised, track: ink.border }
+
+  for (const [name, bg] of Object.entries(light)) {
+    it(`status dots, bars and icons stay visible on the ${name}`, () => {
+      for (const graphic of [danger.DEFAULT, warning.DEFAULT, success.DEFAULT, brand[600]]) {
+        expectVisible(graphic, bg)
+      }
+    })
+  }
+
+  for (const [name, bg] of Object.entries(dark)) {
+    it(`dark status bars stay visible on the ${name}`, () => {
+      for (const graphic of [danger.dark, warning.dark, success.dark, ink.muted]) {
+        expectVisible(graphic, bg)
+      }
+    })
+  }
+
+  it('chip labels stay readable on the chip', () => {
+    expectReadable(slate[300], slate[800])
+  })
+
+  it('the delete confirm outline stays readable on an entry card', () => {
+    expectReadable(twColors.red[700], slate[900])  // DANGER_OUTLINE label
+    expectVisible(twColors.red[600], slate[900])   // DANGER_OUTLINE border
   })
 })
 

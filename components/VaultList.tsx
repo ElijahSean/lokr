@@ -7,7 +7,8 @@
  *  - Search/filter across site, username, and notes
  *  - Add, edit, and delete entries — always re-encrypts before writing to IndexedDB
  *  - Update the vault HMAC signature after every write
- *  - Compute and cache health flags (strength, duplicates, age) per entry
+ *  - Work out strength and duplicate flags per entry for the card chips, in
+ *    memory only (lib/entryAnalysis.ts, task 3.3); age is worked out on the card
  *
  * Encryption lifecycle per save:
  *  plaintext password → encryptEntry(key, plaintext) → { ciphertext, iv }
@@ -26,8 +27,12 @@ import { useSession } from '@/hooks/useSession'
 import { db, type VaultEntry } from '@/lib/db'
 import { encryptEntry, decryptEntry } from '@/lib/crypto'
 import { scorePassword, generatePassword, type GeneratorOptions } from '@/lib/generator'
+import { analyseEntries, type DecryptedItem, type EntryFlags } from '@/lib/entryAnalysis'
 import EntryCard from './EntryCard'
-import { LockIcon, PinCodeIcon, VaultIcon } from '@/components/Icons'
+import {
+  CloseIcon, EyeIcon, EyeOffIcon, LockIcon, PinCodeIcon, PlusIcon, SearchIcon, UploadIcon, VaultIcon, WarningIcon,
+} from '@/components/Icons'
+import { ERROR_BANNER, STRENGTH_BAR } from '@/components/ui'
 
 const EMPTY_FORM = {
   site:          '',
@@ -52,6 +57,7 @@ export default function VaultList() {
   const { encryptionKey, updateVaultSignature } = useSession()
 
   const [entries, setEntries]           = useState<VaultEntry[]>([])
+  const [flags, setFlags]               = useState<Map<number, EntryFlags>>(new Map())
   const [searchQuery, setSearchQuery]   = useState('')
   const [isLoading, setIsLoading]       = useState(true)
   const [showModal, setShowModal]       = useState(false)
@@ -94,6 +100,22 @@ export default function VaultList() {
             : e
         )
       )
+
+      // Strength and reuse chips (task 3.3): decrypt each password in memory and
+      // keep only the flags. `decrypted` goes out of scope when this function
+      // returns and is never written anywhere ("Health analysis stays in memory").
+      // An entry that fails to decrypt just gets no chips, rather than hiding the list.
+      const decrypted = await Promise.all(
+        all.map(async e => {
+          try {
+            const password = await decryptEntry(encryptionKey, e.encryptedPassword, e.iv)
+            return { id: e.id!, password, isPin: e.entryType === 'pin' }
+          } catch {
+            return null
+          }
+        })
+      )
+      setFlags(analyseEntries(decrypted.filter((d): d is DecryptedItem => d !== null)))
     }
 
     setEntries(all)
@@ -283,278 +305,291 @@ export default function VaultList() {
     : null
 
   return (
-    <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="flex gap-3">
-        <div className="relative flex-1">
-          <svg xmlns="http://www.w3.org/2000/svg" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search by site, username, or notes…"
-            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-primary placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-          />
-        </div>
-        <button
-          onClick={openAddModal}
-          className="bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap flex items-center gap-2"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add Entry
-        </button>
-      </div>
-
-      {!isLoading && (
-        <p className="text-slate-500 text-sm">
-          {filteredEntries.length} {filteredEntries.length === 1 ? 'entry' : 'entries'}
-          {searchQuery && ` matching "${searchQuery}"`}
-        </p>
-      )}
-
-      {isLoading && (
-        <div className="flex justify-center py-12">
-          <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-      )}
-
-      {!isLoading && entries.length === 0 && (
-        <div className="text-center py-16 border border-slate-800 border-dashed rounded-2xl">
-          <LockIcon className="w-10 h-10 mx-auto mb-4 text-slate-500" />
-          <h3 className="text-primary font-semibold mb-2">Your vault is empty</h3>
-          <p className="text-slate-500 text-sm mb-6">Add your first password to get started.</p>
+    <>
+      <div className="space-y-4">
+        {/* Toolbar */}
+        <div className="flex gap-3">
+          <div className="relative flex-1">
+            <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search by site, username, or notes…"
+              aria-label="Search entries"
+              className="w-full rounded-full border border-slate-700 bg-slate-950 py-2.5 pl-11 pr-4 text-sm text-primary placeholder-slate-500 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            />
+          </div>
           <button
             onClick={openAddModal}
-            className="bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-6 py-2.5 rounded-xl transition-colors"
+            className="flex items-center gap-2 whitespace-nowrap rounded-full bg-brand-500 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-600"
           >
-            Add Your First Entry
+            <PlusIcon />
+            Add Entry
           </button>
         </div>
-      )}
 
-      {!isLoading && entries.length > 0 && filteredEntries.length === 0 && (
-        <div className="text-center py-12 text-slate-500 text-sm">
-          No entries match &ldquo;{searchQuery}&rdquo;
+        {!isLoading && (
+          <p className="px-1 text-sm text-slate-500">
+            {filteredEntries.length} {filteredEntries.length === 1 ? 'entry' : 'entries'}
+            {searchQuery && ` matching "${searchQuery}"`}
+          </p>
+        )}
+
+        {isLoading && (
+          <div className="flex justify-center py-12">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+          </div>
+        )}
+
+        {!isLoading && entries.length === 0 && (
+          <div className="rounded-3xl bg-slate-900 px-6 py-16 text-center">
+            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-700 text-slate-300">
+              <LockIcon className="h-7 w-7" />
+            </div>
+            <h3 className="mb-2 font-semibold text-primary">
+              Your vault is <span className="font-serif italic">empty</span>
+            </h3>
+            <p className="mb-6 text-sm text-slate-500">Add your first password to get started.</p>
+            <button
+              onClick={openAddModal}
+              className="rounded-full bg-brand-500 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-600"
+            >
+              Add Your First Entry
+            </button>
+          </div>
+        )}
+
+        {!isLoading && entries.length > 0 && filteredEntries.length === 0 && (
+          <div className="rounded-3xl bg-slate-900 py-12 text-center text-sm text-slate-500">
+            No entries match &ldquo;{searchQuery}&rdquo;
+          </div>
+        )}
+
+        <div className="space-y-3">
+          {filteredEntries.map(entry => (
+            <EntryCard
+              key={entry.id}
+              entry={entry}
+              strength={flags.get(entry.id!)?.strength ?? undefined}
+              isDuplicate={flags.get(entry.id!)?.isDuplicate}
+              onEdit={openEditModal}
+              onDelete={handleDelete}
+              onRevealRequest={handleRevealRequest}
+            />
+          ))}
         </div>
-      )}
-
-      <div className="space-y-3">
-        {filteredEntries.map(entry => (
-          <EntryCard
-            key={entry.id}
-            entry={entry}
-            onEdit={openEditModal}
-            onDelete={handleDelete}
-            onRevealRequest={handleRevealRequest}
-          />
-        ))}
       </div>
 
-      {/* Add / Edit Modal */}
+      {/* Add / Edit dialog. Rendered outside the space-y wrapper: a fixed overlay
+          inside one picks up its top margin and sits low (LEARNINGS 2.1) */}
       {showModal && (
         <div
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
           onClick={e => { if (e.target === e.currentTarget) closeModal() }}
         >
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl animate-fade-in max-h-[90vh] overflow-y-auto">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="entry-dialog-title"
+            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl bg-slate-950 shadow-2xl animate-fade-in"
+          >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 sticky top-0 bg-slate-900 z-10">
-              <h2 className="text-primary font-semibold">
+            <div className="sticky top-0 z-10 flex items-center justify-between bg-slate-950 px-6 pb-3 pt-5">
+              <h2 id="entry-dialog-title" className="text-lg font-semibold text-primary">
                 {editingEntry ? 'Edit Entry' : 'Add Entry'}
               </h2>
-              <button onClick={closeModal} className="text-slate-400 hover:text-primary">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              <button
+                onClick={closeModal}
+                aria-label="Close"
+                className="rounded-full p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-primary"
+              >
+                <CloseIcon className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="p-6 space-y-4">
-              {/* Entry type toggle */}
-              <div className="flex gap-2">
+            <form onSubmit={handleSave} className="space-y-4 px-6 pb-6">
+              {/* Entry type switch */}
+              <div className="flex gap-1 rounded-full bg-slate-800 p-1" role="group" aria-label="Entry type">
                 {(['password', 'pin'] as const).map(t => (
                   <button
                     key={t}
                     type="button"
+                    aria-pressed={form.entryType === t}
                     onClick={() => setForm(f => ({ ...f, entryType: t, password: '' }))}
-                    className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors border flex items-center justify-center gap-1.5 ${
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-full py-2 text-xs font-medium transition-colors ${
                       form.entryType === t
-                        ? 'bg-brand-500 text-white border-brand-500'
-                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-primary'
+                        ? 'bg-slate-950 text-primary shadow-sm'
+                        : 'text-slate-400 hover:text-primary'
                     }`}
                   >
                     {t === 'password'
-                      ? <><VaultIcon className="w-3.5 h-3.5" /> Password / Passphrase</>
-                      : <><PinCodeIcon className="w-3.5 h-3.5" /> PIN / Code</>}
+                      ? <><VaultIcon className="h-3.5 w-3.5" /> Password / Passphrase</>
+                      : <><PinCodeIcon className="h-3.5 w-3.5" /> PIN / Code</>}
                   </button>
                 ))}
               </div>
 
-              {/* Site */}
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-1.5">
-                  {form.entryType === 'pin' ? 'Account / Card Name' : 'Site or Service'}
-                </label>
-                <input
-                  type="text"
-                  value={form.site}
-                  onChange={e => setForm(f => ({ ...f, site: e.target.value }))}
-                  placeholder={form.entryType === 'pin' ? 'e.g. Visa Debit' : 'e.g. github.com'}
-                  required
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-primary placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                />
-              </div>
-
-              {/* Username / label */}
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-1.5">
-                  {form.entryType === 'pin' ? 'Card / Account Label' : 'Username / Email'}
-                </label>
-                <input
-                  type="text"
-                  value={form.username}
-                  onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
-                  placeholder={form.entryType === 'pin' ? 'e.g. ending in 4242' : 'e.g. john@example.com'}
-                  required
-                  autoComplete="off"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-primary placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                />
-              </div>
-
-              {/* Password / PIN */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-sm font-medium text-slate-400">
-                    {form.entryType === 'pin' ? 'PIN / Code' : 'Password'}
+              {/* Login group: what the entry is and how to sign in */}
+              <div className="space-y-4 rounded-2xl bg-slate-900 p-4">
+                <div>
+                  <label className={LABEL}>
+                    {form.entryType === 'pin' ? 'Account / Card Name' : 'Site or Service'}
                   </label>
-                  {form.entryType === 'password' && (
+                  <input
+                    type="text"
+                    value={form.site}
+                    onChange={e => setForm(f => ({ ...f, site: e.target.value }))}
+                    placeholder={form.entryType === 'pin' ? 'e.g. Visa Debit' : 'e.g. github.com'}
+                    required
+                    className={INPUT}
+                  />
+                </div>
+
+                <div>
+                  <label className={LABEL}>
+                    {form.entryType === 'pin' ? 'Card / Account Label' : 'Username / Email'}
+                  </label>
+                  <input
+                    type="text"
+                    value={form.username}
+                    onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+                    placeholder={form.entryType === 'pin' ? 'e.g. ending in 4242' : 'e.g. john@example.com'}
+                    required
+                    autoComplete="off"
+                    className={INPUT}
+                  />
+                </div>
+
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <label className="block text-sm font-medium text-slate-400">
+                      {form.entryType === 'pin' ? 'PIN / Code' : 'Password'}
+                    </label>
+                    {form.entryType === 'password' && (
+                      <button
+                        type="button"
+                        onClick={quickGenerate}
+                        className="text-xs font-medium text-brand-600 underline-offset-2 transition-colors hover:text-brand-500 hover:underline"
+                      >
+                        Generate
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    {/* "new-password", not "off": Chrome ignores "off" on password boxes
+                        and would fill a saved password in here (CLAUDE.md, task 3.3) */}
+                    <input
+                      type={showFormPw ? 'text' : 'password'}
+                      value={form.password}
+                      onChange={e => setForm(f => ({
+                        ...f,
+                        password: form.entryType === 'pin'
+                          ? e.target.value.replace(/\D/g, '').slice(0, 8)
+                          : e.target.value,
+                      }))}
+                      placeholder={form.entryType === 'pin' ? '4–8 digit PIN' : 'Enter or generate a password'}
+                      required
+                      autoComplete="new-password"
+                      inputMode={form.entryType === 'pin' ? 'numeric' : undefined}
+                      className={`${INPUT} pr-11`}
+                    />
                     <button
                       type="button"
-                      onClick={quickGenerate}
-                      className="text-xs text-brand-600 hover:text-brand-500 transition-colors"
+                      onClick={() => setShowFormPw(v => !v)}
+                      aria-label={showFormPw ? 'Hide password' : 'Show password'}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 hover:text-primary"
                     >
-                      Generate
+                      {showFormPw ? <EyeOffIcon /> : <EyeIcon />}
                     </button>
+                  </div>
+
+                  {formStrength && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="h-1 flex-1 overflow-hidden rounded-full bg-slate-700">
+                        <div className={`h-full rounded-full transition-all ${STRENGTH_BAR[formStrength.label]}`} />
+                      </div>
+                      <span className="w-12 text-right text-xs text-slate-400">{formStrength.label}</span>
+                    </div>
                   )}
                 </div>
-                <div className="relative">
-                  <input
-                    type={showFormPw ? 'text' : 'password'}
-                    value={form.password}
-                    onChange={e => setForm(f => ({
-                      ...f,
-                      password: form.entryType === 'pin'
-                        ? e.target.value.replace(/\D/g, '').slice(0, 8)
-                        : e.target.value,
-                    }))}
-                    placeholder={form.entryType === 'pin' ? '4–8 digit PIN' : 'Enter or generate a password'}
-                    required
-                    autoComplete="new-password"
-                    inputMode={form.entryType === 'pin' ? 'numeric' : undefined}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 pr-10 text-sm text-primary placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+              </div>
+
+              {/* Extras group: notes and recovery codes, both encrypted on save */}
+              <div className="space-y-4 rounded-2xl bg-slate-900 p-4">
+                <div>
+                  <label className={LABEL}>Notes (optional)</label>
+                  <textarea
+                    value={form.notes}
+                    onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                    placeholder={form.entryType === 'pin'
+                      ? 'Bank name, card type, branch, etc.'
+                      : 'Recovery email, 2FA backup codes, etc.'}
+                    rows={2}
+                    className={`${INPUT} resize-none`}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowFormPw(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
-                  >
-                    {showFormPw
-                      ? <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                      : <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                    }
-                  </button>
                 </div>
 
-                {formStrength && (
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <div className="flex-1 h-1 bg-slate-700 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all ${
-                        formStrength.label === 'weak'   ? 'w-1/4 bg-red-500'    :
-                        formStrength.label === 'fair'   ? 'w-2/4 bg-yellow-500' :
-                        formStrength.label === 'good'   ? 'w-3/4 bg-blue-500'   :
-                        'w-full bg-green-500'
-                      }`} />
-                    </div>
-                    <span className={`text-xs ${
-                      formStrength.label === 'weak'   ? 'text-red-600'    :
-                      formStrength.label === 'fair'   ? 'text-yellow-600' :
-                      formStrength.label === 'good'   ? 'text-blue-600'   :
-                      'text-green-700'
-                    }`}>{formStrength.label}</span>
+                {/* Recovery codes — uploaded or pasted, encrypted at rest on save */}
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <label className="block text-sm font-medium text-slate-400">
+                      Recovery codes (optional)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => codesFileRef.current?.click()}
+                      className="flex items-center gap-1 text-xs font-medium text-brand-600 underline-offset-2 transition-colors hover:text-brand-500 hover:underline"
+                    >
+                      <UploadIcon className="h-3.5 w-3.5" />
+                      Upload .txt
+                    </button>
+                    <input
+                      ref={codesFileRef}
+                      type="file"
+                      accept=".txt,text/plain"
+                      onChange={handleCodesFileUpload}
+                      className="hidden"
+                    />
                   </div>
-                )}
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-1.5">Notes (optional)</label>
-                <textarea
-                  value={form.notes}
-                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                  placeholder={form.entryType === 'pin'
-                    ? 'Bank name, card type, branch, etc.'
-                    : 'Recovery email, 2FA backup codes, etc.'}
-                  rows={2}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-primary placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none"
-                />
-              </div>
-
-              {/* Recovery codes — uploaded or pasted, encrypted at rest on save */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-sm font-medium text-slate-400">
-                    Recovery codes (optional)
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => codesFileRef.current?.click()}
-                    className="text-xs text-brand-600 hover:text-brand-500 transition-colors flex items-center gap-1"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                    Upload .txt
-                  </button>
-                  <input
-                    ref={codesFileRef}
-                    type="file"
-                    accept=".txt,text/plain"
-                    onChange={handleCodesFileUpload}
-                    className="hidden"
+                  <textarea
+                    value={form.recoveryCodes}
+                    onChange={e => setForm(f => ({ ...f, recoveryCodes: e.target.value }))}
+                    placeholder="Paste 2FA backup codes (one per line) or upload the .txt file from the site"
+                    rows={form.recoveryCodes ? 4 : 2}
+                    spellCheck={false}
+                    className={`${INPUT} resize-none font-mono`}
                   />
+                  {form.recoveryCodes.trim() && (
+                    <p className="mt-1 text-xs text-slate-500">
+                      {form.recoveryCodes.split(/\r?\n/).filter(l => l.trim()).length} codes — stored encrypted, viewable from the entry card
+                    </p>
+                  )}
                 </div>
-                <textarea
-                  value={form.recoveryCodes}
-                  onChange={e => setForm(f => ({ ...f, recoveryCodes: e.target.value }))}
-                  placeholder="Paste 2FA backup codes (one per line) or upload the .txt file from the site"
-                  rows={form.recoveryCodes ? 4 : 2}
-                  spellCheck={false}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-sm font-mono text-primary placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none"
-                />
-                {form.recoveryCodes.trim() && (
-                  <p className="text-xs text-slate-500 mt-1">
-                    {form.recoveryCodes.split(/\r?\n/).filter(l => l.trim()).length} codes — stored encrypted, viewable from the entry card
-                  </p>
-                )}
               </div>
 
               {formError && (
-                <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-red-700 text-sm">
-                  {formError}
+                <div className={ERROR_BANNER} role="alert">
+                  <WarningIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-danger" />
+                  <span>{formError}</span>
                 </div>
               )}
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-3 pt-1">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium rounded-lg py-2.5 transition-colors"
+                  className="flex-1 rounded-full py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-800"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="flex-1 bg-brand-500 hover:bg-brand-600 disabled:bg-slate-700 text-white text-sm font-medium rounded-lg py-2.5 transition-colors flex items-center justify-center gap-2"
+                  className="flex flex-1 items-center justify-center gap-2 rounded-full bg-brand-500 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:bg-slate-700 disabled:text-slate-500"
                 >
                   {isSaving ? (
-                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Saving…</>
+                    <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Saving…</>
                   ) : (
                     editingEntry ? 'Save Changes' : 'Add Entry'
                   )}
@@ -564,6 +599,13 @@ export default function VaultList() {
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
+
+// Dialog field styles. White fields on the grey groups; the focus ring is
+// graphite, which reads on both (2.8: a ring sits outside its element)
+const LABEL = 'mb-1.5 block text-sm font-medium text-slate-400'
+const INPUT =
+  'w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm text-primary placeholder-slate-500 ' +
+  'focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'

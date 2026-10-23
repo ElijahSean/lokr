@@ -31,6 +31,7 @@ import { db } from '@/lib/db'
 import { scorePassword } from '@/lib/generator'
 import { LokrIcon } from '@/components/LokrLogo'
 import { InfoIcon, LockIcon } from '@/components/Icons'
+import { STRENGTH_BAR_ON_DARK } from '@/components/ui'
 
 // How many failed attempts before we start slowing the user down
 const THROTTLE_AFTER = 3
@@ -241,22 +242,11 @@ export default function UnlockScreen() {
               {isFirstTime && strength && (
                 <div className="mt-2 space-y-1">
                   <div className="h-1.5 bg-ink-border rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-300 ${
-                        strength.label === 'weak'   ? 'bg-red-500 w-1/4'    :
-                        strength.label === 'fair'   ? 'bg-yellow-500 w-2/4' :
-                        strength.label === 'good'   ? 'bg-blue-500 w-3/4'   :
-                        'bg-green-500 w-full'
-                      }`}
-                    />
+                    {/* The same scale as the add/edit form, in its dark values (task 3.3) */}
+                    <div className={`h-full rounded-full transition-all duration-300 ${STRENGTH_BAR_ON_DARK[strength.label]}`} />
                   </div>
-                  {/* -400 shades: the -600/-700 ones used on light screens are too dark on ink */}
-                  <p className={`text-xs ${
-                    strength.label === 'weak'   ? 'text-red-400'    :
-                    strength.label === 'fair'   ? 'text-yellow-400' :
-                    strength.label === 'good'   ? 'text-blue-400'   :
-                    'text-green-400'
-                  }`}>
+                  {/* Neutral label: the bar carries the colour */}
+                  <p className="text-xs text-ink-muted">
                     {strength.label.charAt(0).toUpperCase() + strength.label.slice(1)} password
                     {strength.suggestions.length > 0 && ` · ${strength.suggestions[0]}`}
                   </p>

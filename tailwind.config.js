@@ -64,6 +64,24 @@ module.exports = {
           muted:   '#bfbdbd',  // secondary text (YV gray-20)
           subtle:  '#828080',  // faintest text, on the ink page only (YV gray-25)
         },
+        // Status colours (task 3.3): strength weak/fair/strong, duplicate and old
+        // chips, error edges, the "copied" tick. Used for dots, meter bars, icons
+        // and thin edges only, never a fill or text, so they need WCAG's 3:1 for
+        // graphics rather than 4.5:1 (tests/theme.spec.ts checks both kinds). Muted
+        // to sit with the graphite look; `dark` is for the unlock screen's ink.
+        // The "good" level has no status colour: it is a graphite dot.
+        danger: {
+          DEFAULT: '#c64c3a',  // = accent.strong, the logo's keyhole
+          dark:    '#e76b4f',  // = accent (YV --coral)
+        },
+        warning: {
+          DEFAULT: '#9a6a1a',  // derived ochre (Tailwind's amber-600 is 2.65:1 on inputs)
+          dark:    '#d9a441',  // derived
+        },
+        success: {
+          DEFAULT: '#3d7a55',  // derived sage
+          dark:    '#6fbf8a',  // derived
+        },
         // Sticky-note paper colours (task 2.1). DEFAULT is the paper, `strip` the
         // slightly darker top band. Values are Tailwind's -100/-200 shades, named
         // here so dark mode (task 3.1) can retune every note in one place.
