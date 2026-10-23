@@ -12,9 +12,13 @@
 export const NOTE_TITLE_MAX = 200
 export const NOTE_BODY_MAX  = 20_000
 
-export const NOTE_COLOURS = ['yellow', 'green', 'blue', 'pink', 'orange'] as const
+// The five pastels, then the neutral papers (task 2.8). Order is the colour row's.
+export const NOTE_COLOURS = ['yellow', 'green', 'blue', 'pink', 'orange', 'white', 'grey', 'black'] as const
 export type NoteColour = typeof NOTE_COLOURS[number]
-export const DEFAULT_NOTE_COLOUR: NoteColour = 'yellow'
+// A new note starts white (Elijah, 2026-10-23)...
+export const NEW_NOTE_COLOUR: NoteColour = 'white'
+// ...but a stored colour this copy doesn't know still opens yellow, as before 2.8
+export const FALLBACK_NOTE_COLOUR: NoteColour = 'yellow'
 
 /** A decrypted note's content. Lives in React state only, never persisted. */
 export interface NoteContent {
@@ -51,7 +55,7 @@ export function encodeNote(content: NoteContent): string {
     format: 'plain',
     title: content.title,
     body: content.body,
-    colour: isNoteColour(content.colour) ? content.colour : DEFAULT_NOTE_COLOUR,
+    colour: isNoteColour(content.colour) ? content.colour : FALLBACK_NOTE_COLOUR,
     pinned: content.pinned,
     lined: content.lined,
   }
@@ -78,7 +82,7 @@ export function decodeNote(json: string): NoteContent {
     title: blob.title,
     body: blob.body,
     // An unknown colour is cosmetic, not tampering (the HMAC covers that): fall back.
-    colour: isNoteColour(blob.colour) ? blob.colour : DEFAULT_NOTE_COLOUR,
+    colour: isNoteColour(blob.colour) ? blob.colour : FALLBACK_NOTE_COLOUR,
     pinned: blob.pinned,
     // Cosmetic and optional, so a blob without it reads as unlined
     lined: blob.lined === true,

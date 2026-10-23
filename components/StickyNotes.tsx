@@ -27,10 +27,10 @@ import {
   decodeNote,
   compareNotes,
   noteMatches,
-  DEFAULT_NOTE_COLOUR,
+  NEW_NOTE_COLOUR,
   type NoteContent,
 } from '@/lib/notes'
-import StickyNoteView, { NOTE_CLASSES, PinIcon } from './StickyNoteView'
+import StickyNoteView, { NOTE_CLASSES, TONE_CLASSES, PinIcon, type NoteTone } from './StickyNoteView'
 import { NotesIcon } from '@/components/Icons'
 
 interface LoadedNote {
@@ -46,7 +46,7 @@ interface OpenNote {
   content: NoteContent
 }
 
-const NEW_NOTE: NoteContent = { title: '', body: '', colour: DEFAULT_NOTE_COLOUR, pinned: false, lined: false }
+const NEW_NOTE: NoteContent = { title: '', body: '', colour: NEW_NOTE_COLOUR, pinned: false, lined: false }
 
 // Grid of square cards, or a compact list. Not remembered between visits:
 // CLAUDE.md forbids localStorage, and a view mode isn't worth an IndexedDB field.
@@ -277,24 +277,26 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
             }
             const content = note.content
             const classes = NOTE_CLASSES[content.colour]
+            // Light text on the black paper, dark on the rest (task 2.8)
+            const tone = TONE_CLASSES[classes.tone]
             return (
-              <div key={note.id} className={`relative aspect-square rounded-sm shadow-md hover:shadow-lg transition-shadow ${classes.paper}`}>
+              <div key={note.id} className={`relative aspect-square rounded-sm shadow-md hover:shadow-lg transition-shadow ${classes.paper} ${classes.edge}`}>
                 <button
                   ref={el => setCardRef(note.id, el)}
                   onClick={() => openExisting(note)}
-                  className="absolute inset-0 flex flex-col text-left rounded-sm overflow-hidden focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  className={`absolute inset-0 flex flex-col text-left rounded-sm overflow-hidden focus:outline-none focus:ring-2 ${tone.focusRing}`}
                 >
                   <span className={`block h-6 w-full shrink-0 ${classes.strip}`} aria-hidden="true" />
-                  <span className="block px-3 pt-2 pr-9 font-semibold text-sm text-primary line-clamp-2 break-words">
-                    {content.title || <span className="text-slate-500">Untitled</span>}
+                  <span className={`block px-3 pt-2 pr-9 font-semibold text-sm ${tone.text} line-clamp-2 break-words`}>
+                    {content.title || <span className={tone.faint}>Untitled</span>}
                   </span>
-                  <span className={`block mx-3 mt-1 mb-3 text-xs leading-4 text-slate-300 whitespace-pre-wrap break-words overflow-hidden flex-1 ${
-                    content.lined ? 'bg-notebook-lines-sm' : ''
+                  <span className={`block mx-3 mt-1 mb-3 text-xs leading-4 ${tone.secondary} whitespace-pre-wrap break-words overflow-hidden flex-1 ${
+                    content.lined ? tone.linesSm : ''
                   }`}>
                     {content.body}
                   </span>
                 </button>
-                <PinButton note={note} onToggle={handleTogglePin} className="absolute top-7 right-1.5" />
+                <PinButton note={note} onToggle={handleTogglePin} tone={classes.tone} className="absolute top-7 right-1.5" />
               </div>
             )
           })}
@@ -321,7 +323,8 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
                   onClick={() => openExisting(note)}
                   className="flex-1 min-w-0 flex items-center gap-3 pl-4 pr-12 py-3 text-left hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand-500"
                 >
-                  <span className={`w-3 h-3 rounded-full shrink-0 border border-slate-700 ${NOTE_CLASSES[content.colour].strip}`} aria-hidden="true" />
+                  {/* border-slate-500, not -700: the white and grey dots vanished into the row (2.8) */}
+                  <span className={`w-3 h-3 rounded-full shrink-0 border border-slate-500 ${NOTE_CLASSES[content.colour].strip}`} aria-hidden="true" />
                   <span className="flex-1 min-w-0">
                     <span className="block text-sm font-medium text-primary truncate">
                       {content.title || <span className="text-slate-500">Untitled</span>}
@@ -357,19 +360,22 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
 }
 
 /** Pin toggle shared by grid cards and list rows; saves straight away. */
-function PinButton({ note, onToggle, className }: {
+function PinButton({ note, onToggle, className, tone = 'dark-text' }: {
   note: LoadedNote
   onToggle: (_note: LoadedNote) => Promise<void>
   className: string
+  // The grid card passes its paper's tone; the list row sits on the light list, so stays dark
+  tone?: NoteTone
 }) {
   const pinned = note.content?.pinned ?? false
+  const toneClasses = TONE_CLASSES[tone]
   return (
     <button
       onClick={() => void onToggle(note)}
       aria-pressed={pinned}
       aria-label={pinned ? 'Unpin note' : 'Pin note'}
       title={pinned ? 'Unpin' : 'Pin to top'}
-      className={`${className} w-7 h-7 rounded-md flex items-center justify-center text-slate-100 transition-opacity hover:bg-black/5 ${
+      className={`${className} w-7 h-7 rounded-md flex items-center justify-center ${toneClasses.text} transition-opacity ${toneClasses.hover} ${
         pinned ? 'opacity-100' : 'opacity-40 hover:opacity-100'
       }`}
     >

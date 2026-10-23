@@ -73,6 +73,12 @@ module.exports = {
           blue:   { DEFAULT: '#e0f2fe', strip: '#bae6fd' },
           pink:   { DEFAULT: '#fce7f3', strip: '#fbcfe8' },
           orange: { DEFAULT: '#ffedd5', strip: '#fed7aa' },
+          // Neutral papers (task 2.8), from the app's own tokens: white is the page
+          // white with a warm-neutral strip, grey is slate-800/700, black is the
+          // ink surface with an ink strip and takes light (`ink`) text
+          white:  { DEFAULT: '#ffffff', strip: '#f6efee' },
+          grey:   { DEFAULT: '#efe9e7', strip: '#e4dddb' },
+          black:  { DEFAULT: '#232121', strip: '#121212' },
         },
       },
       // System fonts only (task 3.2): youversion.com's Aktiv Grotesk and Denton are
@@ -90,6 +96,11 @@ module.exports = {
           'repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.75rem - 1px), rgb(0 0 0 / 0.14) calc(1.75rem - 1px), rgb(0 0 0 / 0.14) 1.75rem)',
         'notebook-lines-sm':
           'repeating-linear-gradient(to bottom, transparent 0, transparent calc(1rem - 1px), rgb(0 0 0 / 0.12) calc(1rem - 1px), rgb(0 0 0 / 0.12) 1rem)',
+        // The same rulings in white, for the black paper (task 2.8)
+        'notebook-lines-light':
+          'repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.75rem - 1px), rgb(255 255 255 / 0.14) calc(1.75rem - 1px), rgb(255 255 255 / 0.14) 1.75rem)',
+        'notebook-lines-light-sm':
+          'repeating-linear-gradient(to bottom, transparent 0, transparent calc(1rem - 1px), rgb(255 255 255 / 0.12) calc(1rem - 1px), rgb(255 255 255 / 0.12) 1rem)',
       },
       // Subtle animation for loading spinner and transitions
       animation: {

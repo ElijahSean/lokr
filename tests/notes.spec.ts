@@ -9,6 +9,9 @@ import {
   noteMatches,
   NOTE_TITLE_MAX,
   NOTE_BODY_MAX,
+  NOTE_COLOURS,
+  NEW_NOTE_COLOUR,
+  FALLBACK_NOTE_COLOUR,
   type NoteContent,
 } from '@/lib/notes'
 import { encryptEntry, decryptEntry } from '@/lib/crypto'
@@ -57,6 +60,22 @@ describe('encodeNote / decodeNote', () => {
   it('falls back to yellow for an unknown colour', () => {
     const blob = JSON.stringify({ v: 1, format: 'plain', title: '', body: '', colour: 'purple', pinned: false })
     expect(decodeNote(blob).colour).toBe('yellow')
+    expect(FALLBACK_NOTE_COLOUR).toBe('yellow')
+  })
+
+  // Task 2.8: the neutral papers, after the five pastels
+  it('round-trips the white, grey and black papers', () => {
+    for (const colour of ['white', 'grey', 'black'] as const) {
+      expect(decodeNote(encodeNote({ ...NOTE, colour })).colour).toBe(colour)
+    }
+  })
+
+  it('lists the pastels first, then white, grey and black', () => {
+    expect(NOTE_COLOURS).toEqual(['yellow', 'green', 'blue', 'pink', 'orange', 'white', 'grey', 'black'])
+  })
+
+  it('starts a new note on white, apart from the yellow fallback', () => {
+    expect(NEW_NOTE_COLOUR).toBe('white')
   })
 
   it('reads a blob without the lined flag as unlined', () => {

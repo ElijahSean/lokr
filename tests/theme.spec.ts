@@ -16,13 +16,15 @@ interface ThemeColors {
   brand: Scale
   accent: Scale
   ink: Scale
-  note: Record<string, { DEFAULT: string }>
+  note: Record<string, { DEFAULT: string; strip: string }>
 }
 
 // tailwind.config.js is CommonJS (module.exports), so load it with require
 const require = createRequire(import.meta.url)
 const config = require('../tailwind.config.js') as { theme: { extend: { colors: ThemeColors } } }
 const { slate, primary, brand, accent, ink, note } = config.theme.extend.colors
+// Tailwind's default palette, for the stock reds the danger outlines use
+const twColors = require('tailwindcss/colors') as { red: Scale }
 
 const WHITE = '#ffffff'
 const AA = 4.5
@@ -95,10 +97,27 @@ describe('dark parts (unlock screen, top bar, footer)', () => {
 })
 
 describe('sticky notes', () => {
-  // Note text uses slate-100, so retuning the scale for a dark surface would break it
-  it('slate-100 text stays readable on every note colour', () => {
-    for (const paper of Object.values(note)) {
-      expectReadable(slate[100], paper.DEFAULT)
+  // Every paper takes dark slate text except black, which takes light ink text (task 2.8)
+  const lightPapers = Object.entries(note).filter(([name]) => name !== 'black')
+
+  it('has the black paper, so the split below is real', () => {
+    expect(note.black).toBeDefined()
+  })
+
+  for (const [name, paper] of lightPapers) {
+    it(`dark text stays readable on the ${name} paper and its strip`, () => {
+      // paper: title, body preview, "Untitled" and placeholders, the footer
+      for (const text of [slate[100], slate[300], slate[500]]) expectReadable(text, paper.DEFAULT)
+      // strip: toolbar buttons and "Saved", plus the danger red of the confirms
+      for (const text of [slate[100], slate[300], slate[400], twColors.red[700]]) expectReadable(text, paper.strip)
+    })
+  }
+
+  it('light text stays readable on the black paper and its strip', () => {
+    for (const bg of [note.black.DEFAULT, note.black.strip]) {
+      expectReadable(ink.text, bg)
+      expectReadable(ink.muted, bg)
+      expectReadable(twColors.red[400], bg)  // DANGER_OUTLINE_ON_DARK and the confirm text
     }
   })
 })
