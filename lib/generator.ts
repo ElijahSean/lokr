@@ -109,9 +109,9 @@ export function generatePassword(options: GeneratorOptions): string {
     requiredChars.push(randomCharFrom(chars))
   }
   if (options.symbols) {
-    // Symbols are never ambiguous (they're all unique glyphs)
-    charset += SYMBOLS
-    requiredChars.push(randomCharFrom(SYMBOLS))
+    const chars = filterAmbiguous(SYMBOLS, options.excludeAmbiguous)
+    charset += chars
+    requiredChars.push(randomCharFrom(chars))
   }
 
   if (charset.length === 0) {

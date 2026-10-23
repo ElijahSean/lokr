@@ -4,7 +4,7 @@
  * The character groups are written out again here rather than imported, so a
  * spec fails if lib/generator.ts's sets change unexpectedly.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   generatePassword,
   generatePassphrase,
@@ -67,14 +67,48 @@ describe('generatePassword', () => {
     expect(many({ ...all, length: 64, symbols: false }).some(someFrom(AMBIGUOUS))).toBe(true)
   })
 
-  // Known bug, task 1.4: the symbols group skips the ambiguous filter, but '|'
-  // is in both sets (lib/generator.ts AMBIGUOUS and SYMBOLS). it.fails passes
-  // while the bug exists; once 1.4 fixes it, this becomes a plain it().
-  it.fails('drops "|" from symbols when asked (task 1.4)', () => {
+  it('drops "|" from symbols when asked (task 1.4)', () => {
     const symbolsOnly: GeneratorOptions = {
       length: 64, uppercase: false, lowercase: false, numbers: false, symbols: true, excludeAmbiguous: true,
     }
     expect(many(symbolsOnly).some(p => p.includes('|'))).toBe(false)
+  })
+
+  it('filters the forced "|" position from required and filler symbol draws', () => {
+    const random = vi.spyOn(globalThis.crypto, 'getRandomValues')
+      .mockImplementation(array => {
+        ;(array as Uint32Array)[0] = SYMBOLS.indexOf('|')
+        return array
+      })
+
+    try {
+      const password = generatePassword({
+        length: 2, uppercase: false, lowercase: false, numbers: false,
+        symbols: true, excludeAmbiguous: true,
+      })
+      expect(password).toHaveLength(2)
+      expect(password).not.toContain('|')
+      expect(onlyFrom(SYMBOLS.replace('|', ''))(password)).toBe(true)
+    } finally {
+      random.mockRestore()
+    }
+  })
+
+  it('keeps "|" available when ambiguous characters are allowed', () => {
+    const random = vi.spyOn(globalThis.crypto, 'getRandomValues')
+      .mockImplementation(array => {
+        ;(array as Uint32Array)[0] = SYMBOLS.indexOf('|')
+        return array
+      })
+
+    try {
+      expect(generatePassword({
+        length: 1, uppercase: false, lowercase: false, numbers: false,
+        symbols: true, excludeAmbiguous: false,
+      })).toBe('|')
+    } finally {
+      random.mockRestore()
+    }
   })
 
   it('throws when no character group is enabled', () => {
