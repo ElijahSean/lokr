@@ -13,13 +13,14 @@ interface IconProps {
   className?: string
 }
 
-function Svg({ className = 'w-4 h-4', children }: IconProps & { children: React.ReactNode }) {
+// `filled` paints the shape in the text colour too: only the pinned pushpin (3.4)
+function Svg({ className = 'w-4 h-4', filled = false, children }: IconProps & { filled?: boolean; children: React.ReactNode }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       viewBox="0 0 24 24"
-      fill="none"
+      fill={filled ? 'currentColor' : 'none'}
       stroke="currentColor"
       strokeWidth={1.75}
       strokeLinecap="round"
@@ -281,6 +282,54 @@ export function RefreshIcon({ className }: IconProps) {
       <path d="M1 20v-6h6" />
       <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10" />
       <path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+    </Svg>
+  )
+}
+
+// Notes tab and the open note (task 3.4), moved here from inline SVG in
+// StickyNotes.tsx and StickyNoteView.tsx
+
+/** Pushpin, filled when the note is pinned. */
+export function PinIcon({ className, filled = false }: IconProps & { filled?: boolean }) {
+  return (
+    <Svg className={className} filled={filled}>
+      <path d="M9 3h6l-1 6 4 4v2H6v-2l4-4-1-6z" />
+      <path d="M12 15v6" />
+    </Svg>
+  )
+}
+
+/** Notebook rulings, for the Lined toggle. */
+export function LinesIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M4 7h16" />
+      <path d="M4 12h16" />
+      <path d="M4 17h16" />
+    </Svg>
+  )
+}
+
+export function GridIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+    </Svg>
+  )
+}
+
+export function ListIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M8 6h13" />
+      <path d="M8 12h13" />
+      <path d="M8 18h13" />
+      <path d="M3 6h.01" />
+      <path d="M3 12h.01" />
+      <path d="M3 18h.01" />
     </Svg>
   )
 }

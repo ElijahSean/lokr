@@ -179,4 +179,21 @@ describe('sticky notes', () => {
       expectReadable(twColors.red[400], bg)  // DANGER_OUTLINE_ON_DARK and the confirm text
     }
   })
+
+  // Task 3.4 moved the open note's controls off the strip onto the paper itself
+  for (const [name, paper] of lightPapers) {
+    it(`the note's top bar and tool row stay readable on the ${name} paper`, () => {
+      // "Saved" (muted), and the outline Discard / Yes, delete
+      expectReadable(slate[400], paper.DEFAULT)
+      expectReadable(twColors.red[700], paper.DEFAULT)
+      expectVisible(twColors.red[600], paper.DEFAULT)  // DANGER_OUTLINE border
+      // The warning icon beside a confirm or a save error
+      expectVisible(danger.DEFAULT, paper.DEFAULT)
+    })
+  }
+
+  it("the note's warning icon and outline stay visible on the black paper", () => {
+    expectVisible(danger.dark, note.black.DEFAULT)
+    expectVisible(twColors.red[400], note.black.DEFAULT)  // DANGER_OUTLINE_ON_DARK border
+  })
 })

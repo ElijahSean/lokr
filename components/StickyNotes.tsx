@@ -30,8 +30,9 @@ import {
   NEW_NOTE_COLOUR,
   type NoteContent,
 } from '@/lib/notes'
-import StickyNoteView, { NOTE_CLASSES, TONE_CLASSES, PinIcon, type NoteTone } from './StickyNoteView'
-import { NotesIcon } from '@/components/Icons'
+import StickyNoteView, { NOTE_CLASSES, TONE_CLASSES, type NoteTone } from './StickyNoteView'
+import { GridIcon, ListIcon, NotesIcon, PinIcon, PlusIcon, SearchIcon, WarningIcon } from '@/components/Icons'
+import { ERROR_BANNER, PRIMARY_BUTTON, SEGMENT, SEGMENTED, SEGMENT_OFF, SEGMENT_ON } from '@/components/ui'
 
 interface LoadedNote {
   id: number
@@ -183,52 +184,52 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
   return (
     <>
     <div className="space-y-4">
-      {/* Toolbar */}
+      {/* Toolbar, as on the Vault tab (3.3) */}
       <div className="flex gap-3">
         <div className="relative flex-1">
-          <svg xmlns="http://www.w3.org/2000/svg" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input
             type="search"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search notes…"
+            aria-label="Search notes"
             autoComplete="off"
-            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-primary placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+            className="w-full rounded-full border border-slate-700 bg-slate-950 py-2.5 pl-11 pr-4 text-sm text-primary placeholder-slate-500 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
         </div>
         <button
           ref={newButtonRef}
           onClick={() => openView(null, NEW_NOTE)}
-          className="bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap flex items-center gap-2"
+          className={`${PRIMARY_BUTTON} whitespace-nowrap`}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <PlusIcon />
           New note
         </button>
       </div>
 
-      {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+      {error && (
+        <div className={ERROR_BANNER} role="alert">
+          <WarningIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-danger" />
+          <span>{error}</span>
+        </div>
+      )}
 
       {!isLoading && notes.length > 0 && (
-        <div className="flex items-center justify-between">
-          <p className="text-slate-500 text-sm">
+        <div className="flex items-center justify-between gap-3">
+          <p className="px-1 text-sm text-slate-500">
             {visibleNotes.length} {visibleNotes.length === 1 ? 'note' : 'notes'}
             {searchQuery && ` matching "${searchQuery}"`}
           </p>
-          <div className="flex rounded-lg border border-slate-800 overflow-hidden" role="group" aria-label="Notes view">
+          <div className={SEGMENTED} role="group" aria-label="Notes view">
             {(['grid', 'list'] as const).map(v => (
               <button
                 key={v}
                 onClick={() => setView(v)}
                 aria-pressed={view === v}
-                className={`px-3 py-1.5 text-xs font-medium flex items-center gap-1.5 transition-colors ${
-                  view === v ? 'bg-brand-500 text-white' : 'bg-slate-900 text-slate-400 hover:text-primary'
-                }`}
+                className={`${SEGMENT} ${view === v ? SEGMENT_ON : SEGMENT_OFF}`}
               >
-                {v === 'grid' ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-                ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                )}
+                {v === 'grid' ? <GridIcon className="h-3.5 w-3.5" /> : <ListIcon className="h-3.5 w-3.5" />}
                 {v === 'grid' ? 'Grid' : 'List'}
               </button>
             ))}
@@ -238,40 +239,43 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
 
       {isLoading && (
         <div className="flex justify-center py-12">
-          <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
         </div>
       )}
 
       {!isLoading && notes.length === 0 && (
-        <div className="text-center py-16 border border-slate-800 border-dashed rounded-2xl">
-          <NotesIcon className="w-10 h-10 mx-auto mb-4 text-slate-500" />
-          <h3 className="text-primary font-semibold mb-2">No notes yet</h3>
-          <p className="text-slate-500 text-sm mb-6">
+        <div className="rounded-3xl bg-slate-900 px-6 py-16 text-center">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-700 text-slate-300">
+            <NotesIcon className="h-7 w-7" />
+          </div>
+          <h3 className="mb-2 font-semibold text-primary">
+            No notes <span className="font-serif italic">yet</span>
+          </h3>
+          <p className="mb-6 text-sm text-slate-500">
             For secrets that aren&apos;t a login: Wi-Fi details, combinations, instructions.
           </p>
-          <button
-            onClick={() => openView(null, NEW_NOTE)}
-            className="bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-6 py-2.5 rounded-xl transition-colors"
-          >
+          <button onClick={() => openView(null, NEW_NOTE)} className={PRIMARY_BUTTON}>
             New note
           </button>
         </div>
       )}
 
       {!isLoading && notes.length > 0 && visibleNotes.length === 0 && (
-        <div className="text-center py-12 text-slate-500 text-sm">
+        <div className="rounded-3xl bg-slate-900 py-12 text-center text-sm text-slate-500">
           No notes match &ldquo;{searchQuery}&rdquo;
         </div>
       )}
 
-      {/* Grid of square sticky-note cards */}
+      {/* Grid of paper cards: the note's colour, no band or shadow (3.4) */}
       {view === 'grid' && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {visibleNotes.map(note => {
             if (!note.content) {
+              // Neutral, with a status icon, like every other error since 3.5; not openable
               return (
-                <div key={note.id} className="aspect-square rounded-sm border border-red-200 bg-red-50 p-4 flex items-center justify-center text-center">
-                  <p className="text-sm text-red-700">Couldn&apos;t decrypt this note.</p>
+                <div key={note.id} className="aspect-square rounded-2xl bg-slate-900 p-4 flex flex-col items-center justify-center gap-2 text-center">
+                  <WarningIcon className="h-5 w-5 text-danger" />
+                  <p className="text-sm text-primary">Couldn&apos;t decrypt this note.</p>
                 </div>
               )
             }
@@ -280,36 +284,39 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
             // Light text on the black paper, dark on the rest (task 2.8)
             const tone = TONE_CLASSES[classes.tone]
             return (
-              <div key={note.id} className={`relative aspect-square rounded-sm shadow-md hover:shadow-lg transition-shadow ${classes.paper} ${classes.edge}`}>
+              <div key={note.id} className={`relative aspect-square rounded-2xl ${classes.paper} ${classes.edge}`}>
                 <button
                   ref={el => setCardRef(note.id, el)}
                   onClick={() => openExisting(note)}
-                  className={`absolute inset-0 flex flex-col text-left rounded-sm overflow-hidden focus:outline-none focus:ring-2 ${tone.focusRing}`}
+                  className={`absolute inset-0 flex flex-col p-4 text-left rounded-2xl overflow-hidden transition-colors ${tone.hover} focus:outline-none focus:ring-2 ${tone.focusRing}`}
                 >
-                  <span className={`block h-6 w-full shrink-0 ${classes.strip}`} aria-hidden="true" />
-                  <span className={`block px-3 pt-2 pr-9 font-semibold text-sm ${tone.text} line-clamp-2 break-words`}>
+                  <span className={`block pr-7 font-semibold text-sm ${tone.text} line-clamp-2 break-words`}>
                     {content.title || <span className={tone.faint}>Untitled</span>}
                   </span>
-                  <span className={`block mx-3 mt-1 mb-3 text-xs leading-4 ${tone.secondary} whitespace-pre-wrap break-words overflow-hidden flex-1 ${
+                  <span className={`block mt-1.5 text-xs leading-4 ${tone.secondary} whitespace-pre-wrap break-words overflow-hidden flex-1 ${
                     content.lined ? tone.linesSm : ''
                   }`}>
                     {content.body}
                   </span>
+                  <span className={`block mt-2 text-xs ${tone.faint}`}>
+                    {note.updatedAt.toLocaleDateString()}
+                  </span>
                 </button>
-                <PinButton note={note} onToggle={handleTogglePin} tone={classes.tone} className="absolute top-7 right-1.5" />
+                <PinButton note={note} onToggle={handleTogglePin} tone={classes.tone} className="absolute top-2.5 right-2.5" />
               </div>
             )
           })}
         </div>
       )}
 
-      {/* Compact list: one row per note */}
+      {/* Compact list: one row per note, in one card */}
       {view === 'list' && visibleNotes.length > 0 && (
-        <ul className="bg-slate-900 border border-slate-800 rounded-2xl divide-y divide-slate-800 overflow-hidden">
+        <ul className="divide-y divide-slate-700 overflow-hidden rounded-3xl bg-slate-900">
           {visibleNotes.map(note => {
             if (!note.content) {
               return (
-                <li key={note.id} className="px-4 py-3 text-sm text-red-700 bg-red-50">
+                <li key={note.id} className="flex items-center gap-3 px-5 py-3.5 text-sm text-primary">
+                  <WarningIcon className="h-4 w-4 flex-shrink-0 text-danger" />
                   Couldn&apos;t decrypt this note.
                 </li>
               )
@@ -321,7 +328,7 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
                 <button
                   ref={el => setCardRef(note.id, el)}
                   onClick={() => openExisting(note)}
-                  className="flex-1 min-w-0 flex items-center gap-3 pl-4 pr-12 py-3 text-left hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand-500"
+                  className="flex-1 min-w-0 flex items-center gap-3 pl-5 pr-14 py-3.5 text-left transition-colors hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand-500"
                 >
                   {/* border-slate-500, not -700: the white and grey dots vanished into the row (2.8) */}
                   <span className={`w-3 h-3 rounded-full shrink-0 border border-slate-500 ${NOTE_CLASSES[content.colour].strip}`} aria-hidden="true" />
@@ -335,7 +342,7 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
                     {note.updatedAt.toLocaleDateString()}
                   </span>
                 </button>
-                <PinButton note={note} onToggle={handleTogglePin} className="absolute right-2" />
+                <PinButton note={note} onToggle={handleTogglePin} className="absolute right-3" />
               </li>
             )
           })}
@@ -375,7 +382,7 @@ function PinButton({ note, onToggle, className, tone = 'dark-text' }: {
       aria-pressed={pinned}
       aria-label={pinned ? 'Unpin note' : 'Pin note'}
       title={pinned ? 'Unpin' : 'Pin to top'}
-      className={`${className} w-7 h-7 rounded-md flex items-center justify-center ${toneClasses.text} transition-opacity ${toneClasses.hover} ${
+      className={`${className} w-8 h-8 rounded-full flex items-center justify-center ${toneClasses.text} transition-opacity ${toneClasses.hover} ${
         pinned ? 'opacity-100' : 'opacity-40 hover:opacity-100'
       }`}
     >

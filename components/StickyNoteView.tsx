@@ -9,6 +9,11 @@
  *
  * Edits stay in the local draft until Save. Close and Escape ask before
  * discarding unsaved changes; while a confirm is showing, Escape cancels it.
+ *
+ * Layout (task 3.4): a top bar (Close; Saved, Delete, Save) over a tool row
+ * (colour, Pin, Lined; 2.2's formatting buttons join it later), both on the
+ * paper with a thin divider. A confirm takes the tool row's place, so the top
+ * bar never has to wrap on a phone.
  */
 
 'use client'
@@ -21,7 +26,7 @@ import {
   type NoteColour,
   type NoteContent,
 } from '@/lib/notes'
-import { WarningIcon } from '@/components/Icons'
+import { CloseIcon, LinesIcon, PinIcon, TrashIcon, WarningIcon } from '@/components/Icons'
 import { DANGER_OUTLINE, DANGER_OUTLINE_ON_DARK } from '@/components/ui'
 
 /** Which text a paper takes: dark text on the light papers, light text on black (task 2.8). */
@@ -30,8 +35,10 @@ export type NoteTone = 'dark-text' | 'light-text'
 /**
  * Literal class strings per colour: Tailwind only generates classes it finds
  * written out in full, so these can't be built as `bg-note-${colour}`.
- * Tokens live in tailwind.config.js (`note.*`), never hex here. `edge` is the
- * white card's hairline, so it doesn't vanish into the white page.
+ * Tokens live in tailwind.config.js (`note.*`), never hex here. `strip` is the
+ * deeper shade, now only the list's colour dot (3.4 took the band off cards and
+ * the open note). `edge` is a hairline for the papers that fade into the white
+ * page: white, and grey once the cards lost their shadow (3.4).
  */
 export const NOTE_CLASSES: Record<NoteColour, { paper: string; strip: string; swatch: string; label: string; tone: NoteTone; edge: string }> = {
   yellow: { paper: 'bg-note-yellow', strip: 'bg-note-yellow-strip', swatch: 'bg-note-yellow-strip', label: 'Yellow', tone: 'dark-text', edge: '' },
@@ -40,7 +47,7 @@ export const NOTE_CLASSES: Record<NoteColour, { paper: string; strip: string; sw
   pink:   { paper: 'bg-note-pink',   strip: 'bg-note-pink-strip',   swatch: 'bg-note-pink-strip',   label: 'Pink',   tone: 'dark-text', edge: '' },
   orange: { paper: 'bg-note-orange', strip: 'bg-note-orange-strip', swatch: 'bg-note-orange-strip', label: 'Orange', tone: 'dark-text', edge: '' },
   white:  { paper: 'bg-note-white',  strip: 'bg-note-white-strip',  swatch: 'bg-note-white-strip',  label: 'White',  tone: 'dark-text', edge: 'border border-slate-700' },
-  grey:   { paper: 'bg-note-grey',   strip: 'bg-note-grey-strip',   swatch: 'bg-note-grey-strip',   label: 'Grey',   tone: 'dark-text', edge: '' },
+  grey:   { paper: 'bg-note-grey',   strip: 'bg-note-grey-strip',   swatch: 'bg-note-grey-strip',   label: 'Grey',   tone: 'dark-text', edge: 'border border-slate-700' },
   black:  { paper: 'bg-note-black',  strip: 'bg-note-black-strip',  swatch: 'bg-note-black-strip',  label: 'Black',  tone: 'light-text', edge: '' },
 }
 
@@ -50,16 +57,19 @@ export const NOTE_CLASSES: Record<NoteColour, { paper: string; strip: string; sw
  * every paper is checked in tests/theme.spec.ts.
  */
 export const TONE_CLASSES: Record<NoteTone, {
-  // muted: quiet text on the strip ("Saved", Delete); faint: on the paper (footer, "Untitled")
+  // muted: "Saved"; faint: the footer, the card's date and "Untitled"
   text: string; secondary: string; muted: string; faint: string; placeholder: string
-  hover: string; pressed: string; swatchRing: string; focusRing: string
-  lines: string; linesSm: string; danger: string; dangerText: string; dangerHover: string; save: string
+  hover: string; pressed: string; swatchRing: string; focusRing: string; divider: string
+  lines: string; linesSm: string; danger: string; dangerIcon: string; save: string
 }> = {
   'dark-text': {
     text: 'text-primary', secondary: 'text-slate-300', muted: 'text-slate-400', faint: 'text-slate-500', placeholder: 'placeholder-slate-500',
     hover: 'hover:bg-black/5', pressed: 'bg-black/10', swatchRing: 'border-slate-100 ring-2 ring-slate-100', focusRing: 'focus:ring-brand-500',
+    // Translucent, like the hovers, so one class suits every light paper (no new hex)
+    divider: 'border-black/10',
     lines: 'bg-notebook-lines', linesSm: 'bg-notebook-lines-sm',
-    danger: DANGER_OUTLINE, dangerText: 'text-red-700', dangerHover: 'hover:text-red-700',
+    // Warnings are main text with a status-coloured icon, never red text (3.4, as 3.5)
+    danger: DANGER_OUTLINE, dangerIcon: 'text-danger',
     save: 'bg-brand-500 hover:bg-brand-600 text-white',
   },
   'light-text': {
@@ -67,20 +77,11 @@ export const TONE_CLASSES: Record<NoteTone, {
     // The card's focus ring is drawn outside the card, on the white page, so it stays
     // graphite; the offset leaves a white gap so it doesn't merge with the dark edge
     hover: 'hover:bg-white/10', pressed: 'bg-white/15', swatchRing: 'border-ink-text ring-2 ring-ink-text', focusRing: 'focus:ring-brand-500 focus:ring-offset-2',
+    divider: 'border-white/10',
     lines: 'bg-notebook-lines-light', linesSm: 'bg-notebook-lines-light-sm',
-    danger: DANGER_OUTLINE_ON_DARK, dangerText: 'text-red-400', dangerHover: 'hover:text-red-400',
+    danger: DANGER_OUTLINE_ON_DARK, dangerIcon: 'text-danger-dark',
     save: 'bg-ink-text hover:bg-white text-ink',
   },
-}
-
-/** Pushpin in the current text colour, filled when pinned. */
-export function PinIcon({ filled, className = 'w-4 h-4' }: { filled: boolean; className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M9 3h6l-1 6 4 4v2H6v-2l4-4-1-6z" />
-      <line x1="12" y1="15" x2="12" y2="21" />
-    </svg>
-  )
 }
 
 interface StickyNoteViewProps {
@@ -154,7 +155,8 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
     setJustSaved(true)
   }
 
-  const buttonBase = 'text-sm font-medium px-3 py-1.5 rounded-lg transition-colors'
+  const pill = 'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors'
+  const row = 'mx-auto flex w-full max-w-4xl items-center gap-2 px-4 sm:px-6'
 
   return (
     <div
@@ -163,103 +165,138 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
       aria-label={draft.title || 'Untitled note'}
       className={`fixed inset-0 z-50 flex flex-col ${classes.paper} animate-fade-in`}
     >
-      {/* Darker top strip: the sticky part of the note, holding the controls */}
-      <div className={`${classes.strip} shadow-md px-4 py-2 flex flex-wrap items-center gap-2`}>
-        <div className="flex items-center gap-1.5" role="radiogroup" aria-label="Note colour">
-          {NOTE_COLOURS.map(c => (
-            <button
-              key={c}
-              type="button"
-              role="radio"
-              aria-checked={draft.colour === c}
-              aria-label={NOTE_CLASSES[c].label}
-              title={NOTE_CLASSES[c].label}
-              onClick={() => update({ colour: c })}
-              // ml-2 on white: a small gap between the pastels and the neutral papers
-              className={`w-6 h-6 rounded-full border ${NOTE_CLASSES[c].swatch} ${c === 'white' ? 'ml-2' : ''} ${
-                draft.colour === c ? tone.swatchRing : 'border-slate-500'
-              }`}
-            />
-          ))}
-        </div>
+      {/* Top bar: leave on the left, keep on the right */}
+      <div className={`border-b ${tone.divider}`}>
+        {/* Fixed height: the bar doesn't shrink when a confirm hides the buttons on the right */}
+        <div className={`${row} h-14`}>
+          <button type="button" onClick={requestClose} className={`${pill} -ml-2 ${tone.secondary} ${tone.hover}`}>
+            <CloseIcon />
+            Close
+          </button>
 
-        <button
-          type="button"
-          onClick={() => update({ pinned: !draft.pinned })}
-          aria-pressed={draft.pinned}
-          className={`${buttonBase} flex items-center gap-1.5 ${tone.text} ${draft.pinned ? tone.pressed : tone.hover}`}
-        >
-          <PinIcon filled={draft.pinned} />
-          {draft.pinned ? 'Pinned' : 'Pin'}
-        </button>
+          <div className="flex-1" />
 
-        <button
-          type="button"
-          onClick={() => update({ lined: !draft.lined })}
-          aria-pressed={draft.lined}
-          className={`${buttonBase} flex items-center gap-1.5 ${tone.text} ${draft.lined ? tone.pressed : tone.hover}`}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
-            <line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" />
-          </svg>
-          Lined
-        </button>
-
-        <div className="flex-1" />
-
-        {confirm === 'discard' && (
-          <div className="flex items-center gap-2" role="alert">
-            <span className={`text-sm ${tone.text}`}>Discard unsaved changes?</span>
-            {/* Outlined, not filled, so it never looks like Save (3.2) */}
-            <button type="button" onClick={onClose} className={`${buttonBase} ${tone.danger}`}>
-              <WarningIcon className="w-3.5 h-3.5" />
-              Discard
-            </button>
-            <button type="button" onClick={() => setConfirm('none')} className={`${buttonBase} ${tone.secondary} ${tone.hover}`}>
-              Keep editing
-            </button>
-          </div>
-        )}
-
-        {confirm === 'delete' && (
-          <div className="flex items-center gap-2" role="alert">
-            <span className={`text-sm ${tone.dangerText}`}>Delete this note?</span>
-            <button type="button" onClick={() => void onDelete()} className={`${buttonBase} ${tone.danger}`}>
-              <WarningIcon className="w-3.5 h-3.5" />
-              Yes, delete
-            </button>
-            <button type="button" onClick={() => setConfirm('none')} className={`${buttonBase} ${tone.secondary} ${tone.hover}`}>
-              No
-            </button>
-          </div>
-        )}
-
-        {confirm === 'none' && (
-          <>
-            {justSaved && !isDirty && <span className={`text-sm ${tone.muted}`}>Saved</span>}
-            {!isNew && (
-              <button type="button" onClick={() => setConfirm('delete')} className={`${buttonBase} ${tone.muted} ${tone.dangerHover} ${tone.hover}`}>
-                Delete
+          {/* Hidden while a confirm asks, as before 3.4, so Save can't answer it */}
+          {confirm === 'none' && (
+            <>
+              {justSaved && !isDirty && <span className={`text-sm ${tone.muted}`}>Saved</span>}
+              {!isNew && (
+                <button
+                  type="button"
+                  onClick={() => setConfirm('delete')}
+                  aria-label="Delete note"
+                  title="Delete"
+                  className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${tone.secondary} ${tone.hover}`}
+                >
+                  <TrashIcon />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => void handleSave()}
+                disabled={isSaving || !isDirty}
+                className={`rounded-full px-5 py-1.5 text-sm font-medium transition-colors ${tone.save} disabled:opacity-50`}
+              >
+                {isSaving ? 'Saving…' : 'Save'}
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => void handleSave()}
-              disabled={isSaving || !isDirty}
-              className={`${buttonBase} ${tone.save} disabled:opacity-50`}
-            >
-              {isSaving ? 'Saving…' : 'Save'}
-            </button>
-            <button type="button" onClick={requestClose} className={`${buttonBase} ${tone.secondary} ${tone.hover}`}>
-              Close
-            </button>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
-      {error && <p className={`px-6 pt-3 text-sm ${tone.dangerText}`} role="alert">{error}</p>}
+      {/* Tool row, or the confirm in its place. flex-wrap: on a phone the swatches
+          or the confirm's buttons go onto a second line instead of overflowing */}
+      <div className={`border-b ${tone.divider}`}>
+        <div className={`${row} min-h-[3.25rem] flex-wrap gap-y-2 py-2`}>
+          {confirm === 'none' && (
+            <>
+              <div className="flex items-center gap-1.5" role="radiogroup" aria-label="Note colour">
+                {NOTE_COLOURS.map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    role="radio"
+                    aria-checked={draft.colour === c}
+                    aria-label={NOTE_CLASSES[c].label}
+                    title={NOTE_CLASSES[c].label}
+                    onClick={() => update({ colour: c })}
+                    // ml-2 on white: a small gap between the pastels and the neutral papers
+                    className={`h-6 w-6 rounded-full border ${NOTE_CLASSES[c].swatch} ${c === 'white' ? 'ml-2' : ''} ${
+                      draft.colour === c ? tone.swatchRing : 'border-slate-500'
+                    }`}
+                  />
+                ))}
+              </div>
 
-      <div className="flex-1 flex flex-col w-full max-w-4xl mx-auto px-6 py-6 min-h-0">
+              <span className={`mx-1 hidden h-5 border-l sm:block ${tone.divider}`} aria-hidden="true" />
+
+              <button
+                type="button"
+                onClick={() => update({ pinned: !draft.pinned })}
+                aria-pressed={draft.pinned}
+                className={`${pill} ${tone.text} ${draft.pinned ? tone.pressed : tone.hover}`}
+              >
+                <PinIcon filled={draft.pinned} />
+                {draft.pinned ? 'Pinned' : 'Pin'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => update({ lined: !draft.lined })}
+                aria-pressed={draft.lined}
+                className={`${pill} ${tone.text} ${draft.lined ? tone.pressed : tone.hover}`}
+              >
+                <LinesIcon />
+                Lined
+              </button>
+            </>
+          )}
+
+          {confirm === 'discard' && (
+            <div className="flex flex-wrap items-center gap-2" role="alert">
+              <span className={`flex items-center gap-2 text-sm ${tone.text}`}>
+                <WarningIcon className={`h-4 w-4 flex-shrink-0 ${tone.dangerIcon}`} />
+                Discard unsaved changes?
+              </span>
+              {/* Outlined, not filled, so it never looks like Save (3.2) */}
+              <button type="button" onClick={onClose} className={`${pill} ${tone.danger}`}>
+                <WarningIcon className="h-3.5 w-3.5" />
+                Discard
+              </button>
+              <button type="button" onClick={() => setConfirm('none')} className={`${pill} ${tone.secondary} ${tone.hover}`}>
+                Keep editing
+              </button>
+            </div>
+          )}
+
+          {confirm === 'delete' && (
+            <div className="flex flex-wrap items-center gap-2" role="alert">
+              <span className={`flex items-center gap-2 text-sm ${tone.text}`}>
+                <WarningIcon className={`h-4 w-4 flex-shrink-0 ${tone.dangerIcon}`} />
+                Delete this note?
+              </span>
+              <button type="button" onClick={() => void onDelete()} className={`${pill} ${tone.danger}`}>
+                <WarningIcon className="h-3.5 w-3.5" />
+                Yes, delete
+              </button>
+              <button type="button" onClick={() => setConfirm('none')} className={`${pill} ${tone.secondary} ${tone.hover}`}>
+                No
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <div className={`${row} pt-3`}>
+          <p className={`flex items-start gap-2 text-sm ${tone.text}`} role="alert">
+            <WarningIcon className={`mt-0.5 h-4 w-4 flex-shrink-0 ${tone.dangerIcon}`} />
+            {error}
+          </p>
+        </div>
+      )}
+
+      <div className="flex-1 flex flex-col w-full max-w-4xl mx-auto px-4 sm:px-6 py-6 min-h-0">
         <input
           ref={titleRef}
           type="text"
