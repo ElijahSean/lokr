@@ -72,3 +72,36 @@ export const STRENGTH_BAR_ON_DARK: Record<StrengthLabel, string> = {
 export const ERROR_BANNER =
   'flex items-start gap-2.5 rounded-xl border border-slate-700 border-l-4 border-l-danger ' +
   'bg-slate-950 px-4 py-3 text-sm text-primary'
+
+// The same shape with an amber edge, for a heads-up rather than an error (task 3.5:
+// the backup reminder, the "restoring deletes your notes" tick box), with a
+// <ClockIcon /> or <WarningIcon className="text-warning" />
+export const NOTICE_BANNER =
+  'flex items-start gap-2.5 rounded-xl border border-slate-700 border-l-4 border-l-warning ' +
+  'bg-slate-950 px-4 py-3 text-sm text-primary'
+
+// Plain card on the light parts, and the Backup tab's "Danger zone" card (CSV
+// export, full reset): neutral with a thin red left edge, never a pink panel (3.5)
+export const CARD = 'rounded-3xl bg-slate-900 p-6'
+export const DANGER_CARD = 'rounded-3xl border-l-4 border-l-danger bg-slate-900 p-6'
+
+// Pill switch (the add/edit dialog's Password/PIN, the Generator's modes): a grey
+// track with the chosen option as a white pill; each option sets aria-pressed
+export const SEGMENTED = 'flex gap-1 rounded-full bg-slate-800 p-1'
+export const SEGMENT =
+  'flex flex-1 items-center justify-center gap-1.5 rounded-full px-2 py-2 text-xs font-medium transition-colors'
+export const SEGMENT_ON = 'bg-slate-950 text-primary shadow-sm'
+export const SEGMENT_OFF = 'text-slate-400 hover:text-primary'
+
+// Main and quiet buttons on the light parts (3.3's dialog Save and Cancel)
+export const PRIMARY_BUTTON =
+  'inline-flex items-center justify-center gap-2 rounded-full bg-brand-500 px-5 py-2.5 text-sm font-medium ' +
+  'text-white transition-colors hover:bg-brand-600 disabled:bg-slate-700 disabled:text-slate-500'
+export const QUIET_BUTTON =
+  'inline-flex items-center justify-center gap-2 rounded-full bg-slate-800 px-5 py-2.5 text-sm font-medium ' +
+  'text-slate-300 transition-colors hover:bg-slate-700 hover:text-primary'
+
+// Text box on a card (3.3's dialog INPUT)
+export const INPUT =
+  'w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm text-primary placeholder-slate-500 ' +
+  'focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-50'

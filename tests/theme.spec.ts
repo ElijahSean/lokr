@@ -138,6 +138,23 @@ describe('status colours (task 3.3)', () => {
   })
 })
 
+describe('Generator, Health and Backup (task 3.5)', () => {
+  it('quiet buttons stay readable, resting and on hover', () => {
+    // QUIET_BUTTON (Regenerate, Re-analyze) and the import file picker's button
+    expectReadable(slate[300], slate[800])
+    expectReadable(primary, slate[700])
+  })
+
+  it('the danger and notice edges stay visible beside the card and the page', () => {
+    // DANGER_CARD's edge sits on the card; ERROR_BANNER/NOTICE_BANNER on the card
+    // they're placed in; the CSV/RESET boxes' focus ring meets the input and card
+    for (const bg of [slate[900], slate[950]]) {
+      expectVisible(danger.DEFAULT, bg)
+      expectVisible(warning.DEFAULT, bg)
+    }
+  })
+})
+
 describe('sticky notes', () => {
   // Every paper takes dark slate text except black, which takes light ink text (task 2.8)
   const lightPapers = Object.entries(note).filter(([name]) => name !== 'black')

@@ -25,7 +25,7 @@
  *       when there are any, the user must tick a box naming how many first
  *     - Vault is re-signed and the session adopts the file-derived keys
  *
- *  4. Full reset (⚠️ DESTRUCTIVE)
+ *  4. Full reset (DESTRUCTIVE)
  *     - Wipes all IndexedDB data (entries, notes, history, metadata, health flags)
  *     - User must type "RESET" in a text field
  *     - Locks the vault and redirects to /
@@ -38,8 +38,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useSession } from '@/hooks/useSession'
 import { db, countStickyNotes, clearStickyNotes } from '@/lib/db'
 import { downloadVaultFile, restoreVaultFile, exportCSV } from '@/lib/export'
-import { ClockIcon, DownloadIcon, TrashIcon, UploadIcon, WarningIcon } from '@/components/Icons'
-import { DANGER_OUTLINE } from '@/components/ui'
+import { CheckIcon, ClockIcon, DownloadIcon, TrashIcon, UploadIcon, WarningIcon } from '@/components/Icons'
+import {
+  CARD, DANGER_CARD, DANGER_OUTLINE, ERROR_BANNER, INPUT, NOTICE_BANNER, PRIMARY_BUTTON,
+} from '@/components/ui'
 
 export default function ExportImport() {
   const { encryptionKey, hmacKey, lock, adoptSessionKeys } = useSession()
@@ -47,10 +49,13 @@ export default function ExportImport() {
   // ── Vault export state ────────────────────────────────────────────────────────
   const [isExporting, setIsExporting] = useState(false)
   const [exportSuccess, setExportSuccess] = useState(false)
+  // Failures show in their own section, never as a browser pop-up (3.5)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   // ── CSV export state ──────────────────────────────────────────────────────────
   const [csvConfirmText, setCsvConfirmText] = useState('')
   const [isExportingCsv, setIsExportingCsv] = useState(false)
+  const [csvError, setCsvError] = useState<string | null>(null)
 
   // ── Import state ──────────────────────────────────────────────────────────────
   const [importFile, setImportFile] = useState<File | null>(null)
@@ -66,15 +71,18 @@ export default function ExportImport() {
   // ── Reset state ───────────────────────────────────────────────────────────────
   const [resetConfirmText, setResetConfirmText] = useState('')
   const [isResetting, setIsResetting] = useState(false)
+  const [resetError, setResetError] = useState<string | null>(null)
 
   // ── Last backup info ──────────────────────────────────────────────────────────
   const [lastBackupDate, setLastBackupDate] = useState<Date | null>(null)
 
   // Load last backup date on mount
   useEffect(() => {
-    db.vault_meta.get(1).then(meta => {
+    async function loadLastBackup() {
+      const meta = await db.vault_meta.get(1)
       if (meta?.lastBackupAt) setLastBackupDate(new Date(meta.lastBackupAt))
-    })
+    }
+    void loadLastBackup()
   }, [])
 
   // ── Export .vault ─────────────────────────────────────────────────────────────
@@ -82,6 +90,7 @@ export default function ExportImport() {
     if (!hmacKey) return
     setIsExporting(true)
     setExportSuccess(false)
+    setExportError(null)
 
     try {
       const meta = await db.vault_meta.get(1)
@@ -91,7 +100,7 @@ export default function ExportImport() {
       setLastBackupDate(new Date())
       setTimeout(() => setExportSuccess(false), 3000)
     } catch (err) {
-      alert(`Export failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      setExportError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
       setIsExporting(false)
     }
@@ -101,11 +110,12 @@ export default function ExportImport() {
   async function handleExportCsv() {
     if (!encryptionKey || csvConfirmText !== 'CONFIRM') return
     setIsExportingCsv(true)
+    setCsvError(null)
     try {
       await exportCSV(encryptionKey)
       setCsvConfirmText('')
     } catch (err) {
-      alert(`CSV export failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      setCsvError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
       setIsExportingCsv(false)
     }
@@ -160,6 +170,7 @@ export default function ExportImport() {
   async function handleReset() {
     if (resetConfirmText !== 'RESET') return
     setIsResetting(true)
+    setResetError(null)
 
     try {
       // Wipe all IndexedDB tables
@@ -173,7 +184,9 @@ export default function ExportImport() {
       // Lock vault and redirect to /
       lock()
     } catch (err) {
-      alert(`Reset failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      // The tables are cleared one after another, so a failure partway may have
+      // deleted some of them already: say so rather than imply nothing changed
+      setResetError(err instanceof Error ? err.message : 'Unknown error')
       setIsResetting(false)
     }
   }
@@ -186,10 +199,15 @@ export default function ExportImport() {
   const shouldWarnBackup = daysSinceBackup === null || daysSinceBackup >= 7
 
   // ── Render ────────────────────────────────────────────────────────────────────
+  // Two groups (3.5): Backup (export, import) on plain cards, then a Danger zone
+  // (CSV export, full reset) on cards with a thin red edge. Colour is only ever
+  // an edge, a dot or an icon; text stays neutral (CLAUDE.md, status tokens).
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <h2 className="text-primary text-xl font-semibold mb-1">Backup & Restore</h2>
+        <h2 className="text-primary text-xl font-semibold mb-1">
+          Backup <span className="font-serif italic font-normal">&amp;</span> Restore
+        </h2>
         <p className="text-slate-400 text-sm">
           Export encrypted backups regularly. Store them in a cloud drive or external disk.
         </p>
@@ -197,11 +215,11 @@ export default function ExportImport() {
 
       {/* ── Backup reminder ──────────────────────────────────────────────── */}
       {shouldWarnBackup && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-start gap-3">
-          <ClockIcon className="w-5 h-5 mt-0.5 flex-shrink-0 text-amber-700" />
+        <div className={NOTICE_BANNER}>
+          <ClockIcon className="w-4 h-4 mt-0.5 flex-shrink-0 text-warning" />
           <div>
-            <p className="text-amber-700 font-medium text-sm">Time for a backup</p>
-            <p className="text-amber-600 text-xs mt-0.5">
+            <p className="font-medium">Time for a backup</p>
+            <p className="text-slate-400 text-xs mt-0.5">
               {daysSinceBackup === null
                 ? "You haven't made a backup yet."
                 : `Last backup was ${daysSinceBackup} days ago.`
@@ -213,11 +231,11 @@ export default function ExportImport() {
       )}
 
       {/* ── Section 1: Encrypted .vault export ───────────────────────────── */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-        <div className="flex items-start justify-between">
-          <div>
+      <section className={`${CARD} space-y-4`}>
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
+          <div className="min-w-0 flex-[1_1_16rem]">
             <h3 className="text-primary font-medium flex items-center gap-2">
-              <DownloadIcon /> Export Encrypted Backup
+              <DownloadIcon /> Export encrypted backup
             </h3>
             <p className="text-slate-500 text-sm mt-1">
               Downloads a <code className="text-slate-400">.vault</code> file. Passwords stay encrypted — safe to store anywhere.
@@ -227,7 +245,7 @@ export default function ExportImport() {
             </p>
           </div>
           {lastBackupDate && (
-            <span className="text-xs text-slate-500 flex-shrink-0 ml-4">
+            <span className="text-xs text-slate-500 flex-shrink-0">
               Last: {lastBackupDate.toLocaleDateString()}
             </span>
           )}
@@ -236,27 +254,34 @@ export default function ExportImport() {
         <button
           onClick={handleExportVault}
           disabled={isExporting}
-          className="w-full bg-brand-500 hover:bg-brand-600 disabled:bg-slate-700 disabled:text-slate-500 text-white font-medium text-sm py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
+          className={`${PRIMARY_BUTTON} w-full`}
         >
           {isExporting ? (
-            <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Exporting…</>
+            <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Exporting…</>
           ) : exportSuccess ? (
-            <><svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><polyline points="20 6 9 17 4 12"/></svg> Saved!</>
+            <><CheckIcon className="w-4 h-4" /> Saved</>
           ) : (
             'Download lokr-backup.vault'
           )}
         </button>
-      </div>
+
+        {exportError && (
+          <div className={ERROR_BANNER} role="alert">
+            <WarningIcon className="w-4 h-4 mt-0.5 flex-shrink-0 text-danger" />
+            <span>Export failed: {exportError}</span>
+          </div>
+        )}
+      </section>
 
       {/* ── Section 2: Import .vault ──────────────────────────────────────── */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+      <section className={`${CARD} space-y-4`}>
         <div>
           <h3 className="text-primary font-medium flex items-center gap-2">
-            <UploadIcon /> Import Backup
+            <UploadIcon /> Import backup
           </h3>
           <p className="text-slate-500 text-sm mt-1">
             Restore from a <code className="text-slate-400">.vault</code> file.
-            <strong className="text-amber-700"> This replaces your current vault.</strong>
+            <strong className="text-primary font-medium"> This replaces your current vault.</strong>
           </p>
         </div>
 
@@ -268,9 +293,9 @@ export default function ExportImport() {
             onChange={handleFileSelect}
             disabled={isImporting}
             className="block w-full text-sm text-slate-400
-              file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0
-              file:text-sm file:font-medium file:bg-brand-500 file:text-white
-              hover:file:bg-brand-600 file:transition-colors file:cursor-pointer
+              file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0
+              file:text-sm file:font-medium file:bg-slate-800 file:text-slate-300
+              hover:file:bg-slate-700 hover:file:text-primary file:transition-colors file:cursor-pointer
               cursor-pointer"
           />
         </label>
@@ -278,7 +303,7 @@ export default function ExportImport() {
         {importFile && (
           <div className="space-y-3">
             <div>
-              <label htmlFor="import-password" className="block text-sm text-slate-400 mb-1.5">
+              <label htmlFor="import-password" className="block text-sm font-medium text-slate-400 mb-1.5">
                 Master password of this backup
               </label>
               <input
@@ -289,7 +314,7 @@ export default function ExportImport() {
                 placeholder="The password used when the backup was created"
                 autoComplete="off"
                 disabled={isImporting}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-primary placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
+                className={INPUT}
               />
               <p className="text-slate-500 text-xs mt-1.5">
                 Backups from another device or an older vault are fine — the file
@@ -297,99 +322,116 @@ export default function ExportImport() {
               </p>
             </div>
             {noteCount > 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-2">
-                <p className="text-amber-700 text-sm">
-                  Notes aren&apos;t included in backups yet; restoring deletes
-                  your {noteCount} {noteCount === 1 ? 'note' : 'notes'}.
-                </p>
-                <label className="flex items-center gap-2 text-sm text-amber-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={notesAcknowledged}
-                    onChange={e => setNotesAcknowledged(e.target.checked)}
-                    disabled={isImporting}
-                    className="accent-amber-600"
-                  />
-                  I understand my {noteCount} {noteCount === 1 ? 'note' : 'notes'} will be deleted
-                </label>
+              <div className={NOTICE_BANNER}>
+                <WarningIcon className="w-4 h-4 mt-0.5 flex-shrink-0 text-warning" />
+                <div className="space-y-2">
+                  <p>
+                    Notes aren&apos;t included in backups yet; restoring deletes
+                    your {noteCount} {noteCount === 1 ? 'note' : 'notes'}.
+                  </p>
+                  <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={notesAcknowledged}
+                      onChange={e => setNotesAcknowledged(e.target.checked)}
+                      disabled={isImporting}
+                      className="w-4 h-4 rounded accent-brand-500"
+                    />
+                    I understand my {noteCount} {noteCount === 1 ? 'note' : 'notes'} will be deleted
+                  </label>
+                </div>
               </div>
             )}
             <button
               onClick={handleRestore}
               disabled={!importPassword || isImporting || restoreBlockedByNotes}
-              className="w-full bg-brand-500 hover:bg-brand-600 disabled:bg-slate-700 disabled:text-slate-500 text-white font-medium text-sm py-2.5 rounded-xl transition-colors"
+              className={`${PRIMARY_BUTTON} w-full`}
             >
-              {isImporting ? 'Verifying and restoring…' : 'Restore Backup'}
+              {isImporting ? 'Verifying and restoring…' : 'Restore backup'}
             </button>
           </div>
         )}
 
         {isImporting && (
-          <p className="text-brand-600 text-sm flex items-center gap-2">
-            <div className="w-4 h-4 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-slate-400 text-sm flex items-center gap-2">
+            <span className="w-4 h-4 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
             Verifying and importing…
           </p>
         )}
         {importResult && (
-          <p className="text-green-600 text-sm">
-            ✓ Imported {importResult.count} entries successfully.
+          <p className="text-primary text-sm flex items-center gap-2" role="status">
+            <CheckIcon className="w-4 h-4 text-success" />
+            Imported {importResult.count} entries successfully.
           </p>
         )}
         {importError && (
-          <p className="text-red-600 text-sm">✗ {importError}</p>
+          <div className={ERROR_BANNER} role="alert">
+            <WarningIcon className="w-4 h-4 mt-0.5 flex-shrink-0 text-danger" />
+            <span>{importError}</span>
+          </div>
         )}
-      </div>
+      </section>
+
+      {/* ── Danger zone ───────────────────────────────────────────────────── */}
+      <h3 className="text-slate-400 text-xs font-medium uppercase tracking-wider pt-2">
+        Danger zone
+      </h3>
 
       {/* ── Section 3: CSV export (dangerous) ────────────────────────────── */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+      <section className={`${DANGER_CARD} space-y-4`}>
         <div>
           <h3 className="text-primary font-medium flex items-center gap-2">
-            <WarningIcon /> Export Plaintext CSV
+            <WarningIcon className="w-4 h-4 text-danger" /> Export plaintext CSV
           </h3>
-          {/* Large, prominent warning */}
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-2">
-            <p className="text-red-700 text-sm font-medium">Danger: Contains All Passwords In Plaintext</p>
-            <p className="text-red-600 text-xs mt-1">
-              This CSV contains every password unencrypted. Anyone who opens this file
-              can read all your credentials. Delete it immediately after use.
-              Only export if migrating to another password manager.
-            </p>
-          </div>
+          <p className="text-primary text-sm font-medium mt-2">Contains all passwords in plaintext</p>
+          <p className="text-slate-400 text-sm mt-1">
+            This CSV contains every password unencrypted. Anyone who opens this file
+            can read all your credentials. Delete it immediately after use.
+            Only export if migrating to another password manager.
+          </p>
         </div>
 
         {/* Hard confirmation: must type CONFIRM */}
         <div>
-          <label className="block text-sm text-slate-400 mb-1.5">
+          <label htmlFor="csv-confirm" className="block text-sm text-slate-400 mb-1.5">
             Type <span className="text-primary font-mono font-bold">CONFIRM</span> to enable export:
           </label>
           <input
+            id="csv-confirm"
             type="text"
             value={csvConfirmText}
             onChange={e => setCsvConfirmText(e.target.value)}
             placeholder="Type CONFIRM here"
             autoComplete="off"
-            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-primary placeholder-slate-500 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
+            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm text-primary placeholder-slate-500 focus:border-danger focus:outline-none focus:ring-1 focus:ring-danger"
           />
         </div>
 
         <button
           onClick={handleExportCsv}
           disabled={csvConfirmText !== 'CONFIRM' || isExportingCsv}
-          className={`${DANGER_OUTLINE} w-full font-medium text-sm py-2.5 rounded-xl`}
+          className={`${DANGER_OUTLINE} w-full font-medium text-sm py-2.5 rounded-full`}
         >
-          {/* Outlined, not filled: filled red is now the brand's Save colour (3.2) */}
+          {/* Outlined, not filled, so it never looks like the graphite Save (3.2) */}
           <WarningIcon />
           {isExportingCsv ? 'Exporting…' : 'Download lokr-export.csv'}
         </button>
-      </div>
+
+        {csvError && (
+          <div className={ERROR_BANNER} role="alert">
+            <WarningIcon className="w-4 h-4 mt-0.5 flex-shrink-0 text-danger" />
+            <span>CSV export failed: {csvError}</span>
+          </div>
+        )}
+      </section>
 
       {/* ── Section 4: Full reset ─────────────────────────────────────────── */}
-      <div className="bg-red-50 border border-red-200 rounded-2xl p-6 space-y-4">
+      <section className={`${DANGER_CARD} space-y-4`}>
         <div>
-          <h3 className="text-red-700 font-medium flex items-center gap-2">
-            <TrashIcon /> Full Reset — Wipe All Data
+          <h3 className="text-primary font-medium flex items-center gap-2">
+            <TrashIcon className="w-4 h-4 text-danger" /> Full reset — wipe all data
           </h3>
-          <p className="text-red-600 text-sm mt-1">
+          <p className="text-slate-400 text-sm mt-1">
             Permanently deletes all vault entries, sticky notes and metadata from this device.
             This cannot be undone. Export a backup first.
           </p>
@@ -397,28 +439,39 @@ export default function ExportImport() {
 
         {/* Hard confirmation: must type RESET */}
         <div>
-          <label className="block text-sm text-red-600 mb-1.5">
-            Type <span className="text-red-700 font-mono font-bold">RESET</span> to confirm permanent deletion:
+          <label htmlFor="reset-confirm" className="block text-sm text-slate-400 mb-1.5">
+            Type <span className="text-primary font-mono font-bold">RESET</span> to confirm permanent deletion:
           </label>
           <input
+            id="reset-confirm"
             type="text"
             value={resetConfirmText}
             onChange={e => setResetConfirmText(e.target.value)}
             placeholder="Type RESET here"
             autoComplete="off"
-            className="w-full bg-slate-800 border border-red-200 rounded-lg px-4 py-2.5 text-sm text-primary placeholder-slate-500 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
+            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm text-primary placeholder-slate-500 focus:border-danger focus:outline-none focus:ring-1 focus:ring-danger"
           />
         </div>
 
         <button
           onClick={handleReset}
           disabled={resetConfirmText !== 'RESET' || isResetting}
-          className={`${DANGER_OUTLINE} w-full font-medium text-sm py-2.5 rounded-xl`}
+          className={`${DANGER_OUTLINE} w-full font-medium text-sm py-2.5 rounded-full`}
         >
           <WarningIcon />
-          {isResetting ? 'Wiping vault…' : 'Permanently Delete Everything'}
+          {isResetting ? 'Wiping vault…' : 'Permanently delete everything'}
         </button>
-      </div>
+
+        {resetError && (
+          <div className={ERROR_BANNER} role="alert">
+            <WarningIcon className="w-4 h-4 mt-0.5 flex-shrink-0 text-danger" />
+            <span>
+              Reset stopped partway: {resetError}. Some data may already be deleted;
+              try again to finish the wipe.
+            </span>
+          </div>
+        )}
+      </section>
     </div>
   )
 }
