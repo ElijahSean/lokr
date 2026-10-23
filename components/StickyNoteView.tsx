@@ -27,7 +27,7 @@ import {
   type NoteContent,
 } from '@/lib/notes'
 import { CloseIcon, LinesIcon, PinIcon, TrashIcon, WarningIcon } from '@/components/Icons'
-import { DANGER_OUTLINE, DANGER_OUTLINE_ON_DARK } from '@/components/ui'
+import { BRAND_FINISH, DANGER_OUTLINE, DANGER_OUTLINE_ON_DARK } from '@/components/ui'
 import {
   NOTE_FONT_FAMILIES,
   NOTE_FONT_SIZES,
@@ -87,7 +87,7 @@ export const TONE_CLASSES: Record<NoteTone, {
     linesSm: 'bg-notebook-lines-sm dark:bg-notebook-lines-light-sm',
     // Warnings are main text with a status-coloured icon, never red text (3.4, as 3.5)
     danger: DANGER_OUTLINE, dangerIcon: 'text-danger',
-    save: 'bg-brand-500 hover:bg-brand-600 text-brand-label',
+    save: BRAND_FINISH,
   },
   'light-text': {
     text: 'text-ink-text', secondary: 'text-ink-muted', muted: 'text-ink-muted', faint: 'text-ink-muted', placeholder: 'placeholder-ink-subtle',
@@ -100,7 +100,7 @@ export const TONE_CLASSES: Record<NoteTone, {
     linesTight: 'bg-notebook-lines-light-tight', lines: 'bg-notebook-lines-light',
     linesLoose: 'bg-notebook-lines-light-loose', linesSm: 'bg-notebook-lines-light-sm',
     danger: DANGER_OUTLINE_ON_DARK, dangerIcon: 'text-danger-dark',
-    save: 'bg-ink-text hover:bg-white text-ink',
+    save: BRAND_FINISH,
   },
 }
 

@@ -9,7 +9,7 @@ import {
   CalendarIcon, CheckCircleIcon, RefreshIcon, RepeatIcon, WarningIcon,
 } from '@/components/Icons'
 import {
-  CARD, CHIP, CHIP_DOT, ERROR_BANNER, QUIET_BUTTON, STATUS_DOT, STRENGTH_TONE, type StatusTone,
+  CARD, CARD_SURFACE, CHIP, CHIP_DOT, ERROR_BANNER, QUIET_BUTTON, STATUS_DOT, STRENGTH_TONE, type StatusTone,
 } from '@/components/ui'
 
 const AGE_WARNING_DAYS = 90
@@ -200,7 +200,7 @@ export default function HealthDashboard() {
 
 function StatTile({ label, value, tone }: { label: string; value: number; tone: StatusTone | null }) {
   return (
-    <div className="rounded-2xl bg-slate-900 px-4 py-4">
+    <div className={`rounded-2xl px-4 py-4 ${CARD_SURFACE}`}>
       <div className="text-2xl font-semibold text-primary tabular-nums">{value}</div>
       <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-400">
         {tone && value > 0 && <span className={`${CHIP_DOT} ${STATUS_DOT[tone]}`} aria-hidden="true" />}
@@ -220,7 +220,7 @@ function IssueSection({
   analyses: EntryAnalysis[]
 }) {
   return (
-    <section className="rounded-3xl bg-slate-900 overflow-hidden">
+    <section className={`rounded-3xl overflow-hidden ${CARD_SURFACE}`}>
       <div className="px-5 pt-5 pb-3">
         <h3 className="text-primary font-semibold flex items-center gap-2">
           <Icon className={`w-4 h-4 ${iconClass}`} />

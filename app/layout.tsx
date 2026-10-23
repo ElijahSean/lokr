@@ -21,7 +21,9 @@ export const metadata: Metadata = {
     'A local password manager. All vault data stays on your device, encrypted with your master password. No cloud. No accounts. No network.',
   robots: 'noindex, nofollow',
   icons: {
-    icon: '/logo.svg',
+    // Version the path when the artwork changes so Chrome does not keep an old
+    // tab icon after task 3.6's black/white/blue logo refresh.
+    icon: '/logo.svg?v=3.6',
   },
 }
 

@@ -45,23 +45,23 @@ module.exports = {
   darkMode: 'media',
   theme: {
     extend: {
-      // YouVersion colour theme (task 3.2) with dark values (task 3.1). The hex
-      // values and their notes live in tailwind.palette.js; tests/theme.spec.ts
+      // SPACED-inspired palette and material system (task 3.6). The source and
+      // derived hex values live in tailwind.palette.js; tests/theme.spec.ts
       // checks every text/background pairing in both themes (WCAG AA, 4.5:1).
       colors: {
-        // Light parts (everything below the vault's top bar). The scale stays
-        // inverted: high numbers = light backgrounds, low numbers = dark text
-        // (dark mode keeps the meaning: high = surfaces, low = text).
+        // The scale stays inverted for compatibility: high numbers are surfaces
+        // and low numbers text in both themes.
         slate: themed.classes.slate,
         primary: themed.classes.primary,
-        // Buttons and active states: graphite on light, warm-white pills in dark mode.
-        // The name stays `brand` so the existing classes keep working.
+        // Blue buttons, links and active states. The name stays `brand` so the
+        // existing component contract remains stable.
         brand: { ...fixed.brand, ...themed.classes.brand },
         accent: fixed.accent,
-        // Dark parts: the unlock screen and the vault's top bar and footer. Kept
-        // apart from `slate`, whose inverted names would paint light-on-light there,
-        // and the same in both themes.
+        // Fixed dark-paper tokens: black notes use these in either system theme.
         ink: fixed.ink,
+        // The unlock screen, top bar and footer swap with the system theme. This
+        // keeps light mode fully matte and dark mode fully glossy (Elijah, 3.6).
+        shell: themed.classes.shell,
         // Status colours (task 3.3): dots, meter bars, icons and thin edges only,
         // never a fill or text (WCAG's 3:1 for graphics). DEFAULT swaps with the
         // theme; `dark` is the unlock screen's, fixed.
@@ -71,9 +71,8 @@ module.exports = {
         // Sticky-note papers (tasks 2.1, 2.8): muted dark tints in dark mode
         note: themed.classes.note,
       },
-      // System fonts only (task 3.2): youversion.com's Aktiv Grotesk and Denton are
-      // licensed, and loading any font from the web would be a network call.
-      // `serif` is the italic accent, after the site's "Faith in *Real Life*".
+      // System fonts only: loading a font from the web would violate Lokr's
+      // no-network rule. `serif` remains the small italic accent.
       fontFamily: {
         sans: ['"Segoe UI"', 'system-ui', '-apple-system', 'Roboto', '"Helvetica Neue"', 'Arial', 'sans-serif'],
         serif: ['Georgia', 'Cambria', '"Times New Roman"', 'serif'],
@@ -82,6 +81,14 @@ module.exports = {
       // matches each rich-editor size (leading-6/7/8 in the open note, leading-4
       // on cards) so text sits on the lines; used with bg-local so they scroll.
       backgroundImage: {
+        // Task 3.6: gloss is a restrained static tonal shift. Components only
+        // apply these through `dark:` classes; light mode remains a flat fill.
+        'gloss-card':
+          'linear-gradient(145deg, rgb(var(--c-slate-800)) 0%, rgb(var(--c-slate-900)) 42%, rgb(var(--c-slate-950)) 135%)',
+        'gloss-shell':
+          'linear-gradient(145deg, rgb(var(--c-shell-raised)) 0%, rgb(var(--c-shell-surface)) 42%, rgb(var(--c-shell)) 135%)',
+        'gloss-brand':
+          'linear-gradient(145deg, rgb(var(--c-brand-600)) 0%, rgb(var(--c-brand-500)) 48%, rgb(var(--c-brand-500)) 100%)',
         'notebook-lines-tight':
           'repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.5rem - 1px), rgb(0 0 0 / 0.14) calc(1.5rem - 1px), rgb(0 0 0 / 0.14) 1.5rem)',
         'notebook-lines':
@@ -99,6 +106,11 @@ module.exports = {
           'repeating-linear-gradient(to bottom, transparent 0, transparent calc(2rem - 1px), rgb(255 255 255 / 0.14) calc(2rem - 1px), rgb(255 255 255 / 0.14) 2rem)',
         'notebook-lines-light-sm':
           'repeating-linear-gradient(to bottom, transparent 0, transparent calc(1rem - 1px), rgb(255 255 255 / 0.12) calc(1rem - 1px), rgb(255 255 255 / 0.12) 1rem)',
+      },
+      boxShadow: {
+        // A fine top reflection plus a soft cast shadow; never used in light mode.
+        gloss: 'inset 0 1px 0 rgb(255 255 255 / 0.10), 0 18px 40px rgb(0 0 0 / 0.24)',
+        'gloss-sm': 'inset 0 1px 0 rgb(255 255 255 / 0.09), 0 8px 20px rgb(0 0 0 / 0.18)',
       },
       // Subtle animation for loading spinner and transitions
       animation: {

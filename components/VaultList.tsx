@@ -32,7 +32,7 @@ import EntryCard from './EntryCard'
 import {
   CloseIcon, EyeIcon, EyeOffIcon, LockIcon, PinCodeIcon, PlusIcon, SearchIcon, UploadIcon, VaultIcon, WarningIcon,
 } from '@/components/Icons'
-import { ERROR_BANNER, STRENGTH_BAR } from '@/components/ui'
+import { BRAND_FINISH, CARD_SURFACE, DIALOG_SURFACE, ERROR_BANNER, STRENGTH_BAR } from '@/components/ui'
 
 const EMPTY_FORM = {
   site:          '',
@@ -322,7 +322,7 @@ export default function VaultList() {
           </div>
           <button
             onClick={openAddModal}
-            className="flex items-center gap-2 whitespace-nowrap rounded-full bg-brand-500 px-5 py-2.5 text-sm font-medium text-brand-label transition-colors hover:bg-brand-600"
+            className={`flex items-center gap-2 whitespace-nowrap rounded-full px-5 py-2.5 text-sm font-medium transition-[filter,box-shadow,background-color] ${BRAND_FINISH}`}
           >
             <PlusIcon />
             Add Entry
@@ -343,7 +343,7 @@ export default function VaultList() {
         )}
 
         {!isLoading && entries.length === 0 && (
-          <div className="rounded-3xl bg-slate-900 px-6 py-16 text-center">
+          <div className={`rounded-3xl px-6 py-16 text-center ${CARD_SURFACE}`}>
             <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-700 text-slate-300">
               <LockIcon className="h-7 w-7" />
             </div>
@@ -353,7 +353,7 @@ export default function VaultList() {
             <p className="mb-6 text-sm text-slate-500">Add your first password to get started.</p>
             <button
               onClick={openAddModal}
-              className="rounded-full bg-brand-500 px-6 py-2.5 text-sm font-medium text-brand-label transition-colors hover:bg-brand-600"
+              className={`rounded-full px-6 py-2.5 text-sm font-medium transition-[filter,box-shadow,background-color] ${BRAND_FINISH}`}
             >
               Add Your First Entry
             </button>
@@ -361,7 +361,7 @@ export default function VaultList() {
         )}
 
         {!isLoading && entries.length > 0 && filteredEntries.length === 0 && (
-          <div className="rounded-3xl bg-slate-900 py-12 text-center text-sm text-slate-500">
+          <div className={`rounded-3xl py-12 text-center text-sm text-slate-500 ${CARD_SURFACE}`}>
             No entries match &ldquo;{searchQuery}&rdquo;
           </div>
         )}
@@ -385,7 +385,7 @@ export default function VaultList() {
           inside one picks up its top margin and sits low (LEARNINGS 2.1) */}
       {showModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 dark:backdrop-blur-sm"
           onClick={e => { if (e.target === e.currentTarget) closeModal() }}
         >
           {/* dark: hairline, since the shadow doesn't show on the dark page (task 3.1) */}
@@ -393,7 +393,7 @@ export default function VaultList() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="entry-dialog-title"
-            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl bg-slate-950 shadow-2xl animate-fade-in dark:border dark:border-slate-700"
+            className={`max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl animate-fade-in ${DIALOG_SURFACE}`}
           >
             {/* Header */}
             <div className="sticky top-0 z-10 flex items-center justify-between bg-slate-950 px-6 pb-3 pt-5">
@@ -587,7 +587,7 @@ export default function VaultList() {
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-full bg-brand-500 py-2.5 text-sm font-medium text-brand-label transition-colors hover:bg-brand-600 disabled:bg-slate-700 disabled:text-slate-500"
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-full py-2.5 text-sm font-medium transition-[filter,box-shadow,background-color] disabled:bg-none disabled:bg-slate-700 disabled:text-slate-500 disabled:shadow-none ${BRAND_FINISH}`}
                 >
                   {isSaving ? (
                     <><div className="h-4 w-4 animate-spin rounded-full border-2 border-brand-label border-t-transparent" /> Saving…</>

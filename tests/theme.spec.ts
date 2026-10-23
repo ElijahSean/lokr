@@ -9,6 +9,7 @@
  * to look at, and the theme is in the test name.
  */
 import { createRequire } from 'node:module'
+import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 
 type Scale = Record<string, string>
@@ -21,6 +22,7 @@ interface ThemedColors {
   warning: string
   success: string
   note: Papers
+  shell: Scale
 }
 interface Palette {
   light: ThemedColors
@@ -89,30 +91,75 @@ describe('contrast helper', () => {
   })
 })
 
-describe('the light theme is unchanged by dark mode (task 3.1)', () => {
-  it('keeps every light token at its 3.2–3.4 value', () => {
+describe('the SPACED-inspired palette (task 3.6)', () => {
+  it('pins every light token to the approved matte-white palette', () => {
     expect(palette.light).toEqual({
       slate: {
-        50: '#ffffff', 100: '#0b1926', 200: '#232121', 300: '#393b3d', 400: '#4f4c4c', 500: '#636161',
-        600: '#6a6767', 700: '#e4dddb', 800: '#efe9e7', 900: '#f7f3f2', 950: '#ffffff',
+        50: '#FFFFFF', 100: '#17181C', 200: '#2D2E32', 300: '#45474D', 400: '#555860', 500: '#5F6269',
+        600: '#65686F', 700: '#D1D1D1', 800: '#E7E8EA', 900: '#FFFFFF', 950: '#F4F4F4',
       },
-      primary: '#0b1926',
-      // label: the text-white the buttons used before 3.1
-      brand: { 500: '#232121', 600: '#393b3d', label: '#ffffff' },
-      danger: '#c64c3a',
-      warning: '#9a6a1a',
-      success: '#3d7a55',
+      primary: '#17181C',
+      brand: { 500: '#256AA9', 600: '#1D568A', label: '#FFFFFF' },
+      danger: '#B84350',
+      warning: '#8A6415',
+      success: '#397556',
       note: {
         yellow: { DEFAULT: '#fef9c3', strip: '#fef08a' },
         green:  { DEFAULT: '#dcfce7', strip: '#bbf7d0' },
-        blue:   { DEFAULT: '#e0f2fe', strip: '#bae6fd' },
+        blue:   { DEFAULT: '#D4E2EE', strip: '#bae6fd' },
         pink:   { DEFAULT: '#fce7f3', strip: '#fbcfe8' },
         orange: { DEFAULT: '#ffedd5', strip: '#fed7aa' },
-        white:  { DEFAULT: '#ffffff', strip: '#f6efee' },
-        grey:   { DEFAULT: '#efe9e7', strip: '#e4dddb' },
-        black:  { DEFAULT: '#232121', strip: '#121212' },
+        white:  { DEFAULT: '#FFFFFF', strip: '#F4F4F4' },
+        grey:   { DEFAULT: '#E7E8EA', strip: '#DADBDD' },
+        black:  { DEFAULT: '#2D2E32', strip: '#0F1013' },
+      },
+      shell: {
+        DEFAULT: '#F4F4F4', surface: '#FFFFFF', raised: '#E7E8EA', border: '#D1D1D1',
+        text: '#17181C', muted: '#555860', subtle: '#65686F',
       },
     })
+  })
+
+  it('contains every published SPACED source colour', () => {
+    const serialised = JSON.stringify(palette)
+    for (const anchor of ['#2D2E32', '#F4F4F4', '#9F9FA0', '#D1D1D1', '#368CDD', '#587499', '#D4E2EE']) {
+      expect(serialised).toContain(anchor)
+    }
+  })
+
+  it('keeps gloss and backdrop blur behind the dark media variant', () => {
+    const sharedFinishes = readFileSync(new URL('../components/ui.ts', import.meta.url), 'utf8')
+    const vaultDialog = readFileSync(new URL('../components/VaultList.tsx', import.meta.url), 'utf8')
+    const materialTokens = sharedFinishes.match(/\S*(?:bg-gloss-|shadow-gloss)\S*/g) ?? []
+    const blurTokens = vaultDialog.match(/\S*backdrop-blur\S*/g) ?? []
+    expect(materialTokens.length).toBeGreaterThan(0)
+    expect(blurTokens.length).toBeGreaterThan(0)
+    for (const token of [...materialTokens, ...blurTokens]) {
+      expect(token.replace(/^['"`]/, '')).toMatch(/^dark:/)
+    }
+  })
+
+  it('removes the former coral branding from the live theme and logos', () => {
+    const sources = [
+      '../tailwind.palette.js',
+      '../tailwind.config.js',
+      '../components/LokrLogo.tsx',
+      '../public/logo.svg',
+    ].map(path => readFileSync(new URL(path, import.meta.url), 'utf8'))
+    for (const source of sources) {
+      expect(source).not.toMatch(/YouVersion|#e76b4f|#c64c3a|coral/i)
+    }
+  })
+
+  it('keeps the React logo, favicon and versioned metadata on the same mark', () => {
+    const reactLogo = readFileSync(new URL('../components/LokrLogo.tsx', import.meta.url), 'utf8')
+    const favicon = readFileSync(new URL('../public/logo.svg', import.meta.url), 'utf8')
+    const layout = readFileSync(new URL('../app/layout.tsx', import.meta.url), 'utf8')
+    for (const colour of ['#393B41', '#2D2E32', '#0F1013', '#D4E2EE', '#F4F4F4', '#368CDD']) {
+      expect(reactLogo).toContain(colour)
+      expect(favicon).toContain(colour)
+    }
+    expect(layout).toContain('/logo.svg?v=3.6')
   })
 
   it('gives the dark theme the same tokens, so no class is left without a dark value', () => {
@@ -132,18 +179,18 @@ describe('dark parts (unlock screen, top bar, footer), the same in both themes',
     })
   }
 
-  it('the faintest text and the coral accent stay readable on the ink page', () => {
+  it('the faintest text and the blue accent stay readable on the ink page', () => {
     expectReadable(ink.subtle, ink.DEFAULT)
     expectReadable(accent.DEFAULT, ink.DEFAULT)
   })
 
-  it('dark labels stay readable on the warm-white pills', () => {
+  it('dark labels stay readable on the light fixed-paper controls', () => {
     expectReadable(ink.DEFAULT, ink.text)
     expectReadable(ink.DEFAULT, '#ffffff')  // their hover:bg-white
   })
 
   for (const [name, bg] of Object.entries({ ...surfaces, track: ink.border })) {
-    it(`the create-vault meter's status bars stay visible on the ${name}`, () => {
+    it(`fixed dark-paper status graphics stay visible on the ${name}`, () => {
       for (const graphic of [statusDark.danger, statusDark.warning, statusDark.success, ink.muted]) {
         expectVisible(graphic, bg)
       }
@@ -163,8 +210,25 @@ const OUTLINE = {
 const EDGED = { light: ['white', 'grey'], dark: ['white', 'grey', 'black'] }
 
 for (const theme of ['light', 'dark'] as const) {
-  const { slate, primary, brand, danger, warning, success, note } = palette[theme]
+  const { slate, primary, brand, danger, warning, success, note, shell } = palette[theme]
   const outline = OUTLINE[theme]
+
+  describe(`${theme}: application shell`, () => {
+    const surfaces = { page: shell.DEFAULT, card: shell.surface, input: shell.raised }
+
+    for (const [name, bg] of Object.entries(surfaces)) {
+      it(`shell text stays readable on the ${name}`, () => {
+        for (const text of [shell.text, shell.muted, shell.subtle]) expectReadable(text, bg)
+      })
+    }
+
+    it('the brand focus and button treatments stay readable on the shell', () => {
+      expectVisible(brand[500], shell.DEFAULT)
+      expectVisible(brand[500], shell.surface)
+      expectReadable(brand.label, brand[500])
+      expectReadable(brand.label, brand[600])
+    })
+  })
 
   describe(`${theme}: content below the top bar`, () => {
     const surfaces = { page: slate[950], card: slate[900], input: slate[800] }
@@ -191,7 +255,7 @@ for (const theme of ['light', 'dark'] as const) {
   describe(`${theme}: buttons`, () => {
     it('the label stays readable on the main button and its hover', () => {
       // text-brand-label on bg-brand-500, hover:bg-brand-600 (graphite on light,
-      // warm-white pills in dark mode)
+      // blue buttons with a dark label in dark mode)
       expectReadable(brand.label, brand[500])
       expectReadable(brand.label, brand[600])
     })

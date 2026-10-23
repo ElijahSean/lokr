@@ -1,133 +1,142 @@
 /**
- * tailwind.palette.js — the colours behind the light parts' tokens, light and dark (task 3.1)
+ * tailwind.palette.js — SPACED-inspired light and dark colours (task 3.6)
  *
- * The one place these hex values live. tailwind.config.js turns each `light`/`dark`
- * pair into a CSS variable that a `prefers-color-scheme: dark` media query swaps,
- * so components keep their class names and the theme follows the system with no
- * JavaScript (and no stored preference: CLAUDE.md, no localStorage).
- * tests/theme.spec.ts reads this file for its contrast checks in both themes.
+ * The one place application theme hex values live. tailwind.config.js turns
+ * each `light`/`dark` pair into CSS variables under prefers-color-scheme, so
+ * the whole shell repaints without JavaScript or a stored preference.
  *
- * `light` and `dark` must have the same keys. `fixed` holds the colours that are
- * the same in both themes: the dark parts' `ink` (unlock screen, top bar, footer
- * look the same either way), the coral accent and the status `dark` values.
- * Values marked "YV" are youversion.com's own (task 3.2); "derived" were tuned so
- * text keeps WCAG AA contrast.
+ * Published SPACED anchors from the reference supplied by Elijah:
+ * #2D2E32 charcoal, #F4F4F4 matte white, #9F9FA0 mid grey,
+ * #D1D1D1 light grey, #368CDD blue, #587499 muted blue and #D4E2EE pale blue.
+ * Other values below are derived for hierarchy, interaction or WCAG contrast.
+ * `light` and `dark` must expose the same keys; tests/theme.spec.ts enforces it.
  */
 module.exports = {
   light: {
-    // The inverted scale (task 3.2): high numbers = light backgrounds, low = dark text
+    // Inverted for compatibility: low numbers are text, high numbers surfaces.
     slate: {
-      50:  '#ffffff',  // unused, kept so the scale has no gap
-      100: '#0b1926',  // main text (YV black)
-      200: '#232121',  // emphasis text (YV gray-40)
-      300: '#393b3d',  // secondary text, monospace pw display (YV --grey)
-      400: '#4f4c4c',  // labels (derived)
-      500: '#636161',  // muted text, placeholders (YV gray-30)
-      600: '#6a6767',  // faintest text, tick marks (derived: YV gray-25 is too faint on light)
-      700: '#e4dddb',  // borders, strength-meter track (derived)
-      800: '#efe9e7',  // inputs, hover, secondary surfaces (derived)
-      900: '#f7f3f2',  // cards (the site's large rounded panels)
-      950: '#ffffff',  // page (YV white)
+      50:  '#FFFFFF',
+      100: '#17181C', // derived near-black main text
+      200: '#2D2E32', // SPACED charcoal
+      300: '#45474D', // derived secondary text
+      400: '#555860', // derived labels
+      500: '#5F6269', // derived muted text
+      600: '#65686F', // derived faint text; 4.55:1 on the raised surface
+      700: '#D1D1D1', // SPACED light grey border
+      800: '#E7E8EA', // derived raised/input surface
+      900: '#FFFFFF', // matte card
+      950: '#F4F4F4', // SPACED matte-white page
     },
-    primary: '#0b1926',  // main text (YV black)
-    // Only the two shades in use swap; `label` is the text and spinner on a button
+    primary: '#17181C',
     brand: {
-      500:   '#232121',  // button fill (YV gray-40), focus rings
-      600:   '#393b3d',  // hover, link text, the "good" strength dot (YV --grey)
-      label: '#ffffff',
+      500:   '#256AA9', // darker derivation of SPACED blue; 5.66:1 with white
+      600:   '#1D568A', // derived hover/link blue
+      label: '#FFFFFF',
     },
-    // Status colours (task 3.3), for dots, meter bars, icons and thin edges only
-    danger:  '#c64c3a',  // = accent.strong, the logo's keyhole
-    warning: '#9a6a1a',  // derived ochre (Tailwind's amber-600 is 2.65:1 on inputs)
-    success: '#3d7a55',  // derived sage
-    // Sticky-note papers (tasks 2.1, 2.8). DEFAULT is the paper; `strip` is now only
-    // the swatch and the list's colour dot (3.4 took the band off)
+    // Semantic status colours stay separate from the blue brand.
+    danger:  '#B84350',
+    warning: '#8A6415',
+    success: '#397556',
+    // Coloured papers remain functional content colours. The neutral papers
+    // move onto the SPACED palette; `strip` also colours swatches/list dots.
     note: {
       yellow: { DEFAULT: '#fef9c3', strip: '#fef08a' },
       green:  { DEFAULT: '#dcfce7', strip: '#bbf7d0' },
-      blue:   { DEFAULT: '#e0f2fe', strip: '#bae6fd' },
+      blue:   { DEFAULT: '#D4E2EE', strip: '#bae6fd' },
       pink:   { DEFAULT: '#fce7f3', strip: '#fbcfe8' },
       orange: { DEFAULT: '#ffedd5', strip: '#fed7aa' },
-      white:  { DEFAULT: '#ffffff', strip: '#f6efee' },
-      grey:   { DEFAULT: '#efe9e7', strip: '#e4dddb' },
-      black:  { DEFAULT: '#232121', strip: '#121212' },
+      white:  { DEFAULT: '#FFFFFF', strip: '#F4F4F4' },
+      grey:   { DEFAULT: '#E7E8EA', strip: '#DADBDD' },
+      black:  { DEFAULT: '#2D2E32', strip: '#0F1013' },
+    },
+    // The unlock screen, top bar and footer now follow the system theme too.
+    shell: {
+      DEFAULT: '#F4F4F4',
+      surface: '#FFFFFF',
+      raised:  '#E7E8EA',
+      border:  '#D1D1D1',
+      text:    '#17181C',
+      muted:   '#555860',
+      subtle:  '#65686F',
     },
   },
 
-  // Dark mode (Elijah, 2026-10-23): the content takes the unlock screen's ink, so
-  // the app reads as one dark surface; the scale keeps its meaning (high numbers
-  // are surfaces, low numbers text), now dark surfaces under light text
   dark: {
     slate: {
-      50:  '#121212',
-      100: '#f6efee',  // main text (= ink.text)
-      200: '#ebe5e4',  // derived
-      300: '#d6d2d1',  // derived
-      400: '#bfbdbd',  // = ink.muted
-      500: '#aaa7a7',  // derived: YV gray-25 is 3.5:1 on inputs
-      600: '#9a9797',  // derived
-      700: '#393b3d',  // = ink.border
-      800: '#2e2b2b',  // = ink.raised
-      900: '#232121',  // = ink.surface
-      950: '#121212',  // = ink
+      50:  '#0F1013',
+      100: '#F4F4F4',
+      200: '#E7E8EA',
+      300: '#D1D1D1',
+      400: '#C0C1C4',
+      500: '#B2B3B7',
+      600: '#A8A9AD', // derived faint text; 4.77:1 on the raised surface
+      700: '#45474D',
+      800: '#393B41',
+      900: '#2D2E32', // SPACED charcoal card
+      950: '#0F1013', // derived glossy-black page
     },
-    primary: '#f6efee',
-    // Warm-white pills with dark labels, like the unlock screen's buttons (Elijah, 2026-10-23)
+    primary: '#F4F4F4',
     brand: {
-      500:   '#f6efee',
-      600:   '#ffffff',
-      label: '#121212',
+      500:   '#368CDD', // SPACED blue; 5.39:1 with the dark label
+      600:   '#64AAEC', // derived hover/link blue; 4.53:1 on raised surfaces
+      label: '#0F1013',
     },
-    danger:  '#e76b4f',  // = danger.dark
-    warning: '#d9a441',  // = warning.dark
-    success: '#6fbf8a',  // = success.dark
-    // Muted dark tints with light text (Elijah, 2026-10-23); the swatch is a
-    // mid-tone so the colours still tell apart at dot size
+    danger:  '#F06B78',
+    warning: '#E0AA46',
+    success: '#72C58E',
     note: {
       yellow: { DEFAULT: '#36331a', strip: '#857a35' },
       green:  { DEFAULT: '#1c3124', strip: '#4a7d59' },
       blue:   { DEFAULT: '#1a2c3b', strip: '#4a7396' },
       pink:   { DEFAULT: '#3a2130', strip: '#94567c' },
       orange: { DEFAULT: '#3e2617', strip: '#9c6238' },
-      white:  { DEFAULT: '#333131', strip: '#d6d2d1' },
-      grey:   { DEFAULT: '#2e2b2b', strip: '#6a6767' },
-      black:  { DEFAULT: '#232121', strip: '#121212' },
+      white:  { DEFAULT: '#31343A', strip: '#D1D1D1' },
+      grey:   { DEFAULT: '#292B30', strip: '#9F9FA0' },
+      black:  { DEFAULT: '#202226', strip: '#0F1013' },
+    },
+    shell: {
+      DEFAULT: '#0F1013',
+      surface: '#2D2E32',
+      raised:  '#393B41',
+      border:  '#555860',
+      text:    '#F4F4F4',
+      muted:   '#D1D1D1',
+      subtle:  '#A8A9AD',
     },
   },
 
   fixed: {
-    // The other brand shades, unused by components today; kept for the scale
+    // Remaining brand steps expose the other published SPACED blues/greys.
     brand: {
-      50:  '#f4f1f0',
-      100: '#e4dddb',
-      200: '#bfbdbd',  // YV gray-20
-      300: '#828080',  // YV gray-25
-      400: '#636161',  // YV gray-30
-      700: '#1a1818',
-      800: '#121212',
-      900: '#0b0b0b',
+      50:  '#F4F4F4',
+      100: '#D4E2EE',
+      200: '#D1D1D1',
+      300: '#9F9FA0',
+      400: '#587499',
+      700: '#1D568A',
+      800: '#153F65',
+      900: '#0D283F',
     },
-    // YouVersion's coral, kept small: focus rings and icons on the dark parts;
-    // `strong` for the logo's keyhole
     accent: {
-      DEFAULT: '#e76b4f',  // YV --coral
-      strong:  '#c64c3a',  // derived
+      DEFAULT: '#368CDD', // SPACED blue
+      strong:  '#256AA9', // accessible derived blue
     },
-    // The dark parts: the unlock screen and the vault's top bar and footer
+    // Fixed dark-paper colours. Black notes use these in either system theme,
+    // so they must not swap with the application shell.
     ink: {
-      DEFAULT: '#121212',  // page (YV background-color--alternate)
-      surface: '#232121',  // cards (YV gray-40)
-      raised:  '#2e2b2b',  // inputs and hover on a surface (derived)
-      border:  '#393b3d',  // borders (YV --grey)
-      text:    '#f6efee',  // main text (YV warm-neutral)
-      muted:   '#bfbdbd',  // secondary text (YV gray-20)
-      subtle:  '#828080',  // faintest text, on the ink page only (YV gray-25)
+      DEFAULT: '#0F1013',
+      surface: '#2D2E32',
+      raised:  '#393B41',
+      border:  '#555860',
+      text:    '#F4F4F4',
+      muted:   '#D1D1D1',
+      subtle:  '#9F9FA0',
     },
-    // Status colours on the dark parts (the unlock screen's meter)
+    // Fixed bright variants used on the black paper and other always-dark areas.
     statusDark: {
-      danger:  '#e76b4f',  // = accent (YV --coral)
-      warning: '#d9a441',  // derived
-      success: '#6fbf8a',  // derived
+      danger:  '#FF8996',
+      warning: '#E0AA46',
+      success: '#72C58E',
     },
   },
 }

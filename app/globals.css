@@ -19,9 +19,8 @@
 /* ── Global body defaults ───────────────────────────────────────────────────── */
 @layer base {
   body {
-    /* YouVersion light page + dark text (task 3.2), dark in dark mode (3.1, via the
-       tokens' variables); the unlock screen and the vault's top bar paint their
-       own `ink` backgrounds in both themes */
+    /* SPACED-inspired matte white and dark text in light mode, glossy-black
+       colours in dark mode (task 3.6, through the tokens' CSS variables). */
     @apply bg-slate-950 text-slate-100 font-sans antialiased;
   }
 

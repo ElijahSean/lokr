@@ -33,7 +33,7 @@ import {
 import StickyNoteView, { NOTE_CLASSES, TONE_CLASSES, type NoteTone } from './StickyNoteView'
 import { DEFAULT_NOTE_FONT_FAMILY, DEFAULT_NOTE_FONT_SIZE, documentToPlainText, plainTextToDocument } from '@/lib/noteDoc'
 import { GridIcon, ListIcon, NotesIcon, PinIcon, PlusIcon, SearchIcon, WarningIcon } from '@/components/Icons'
-import { ERROR_BANNER, PRIMARY_BUTTON, SEGMENT, SEGMENTED, SEGMENT_OFF, SEGMENT_ON } from '@/components/ui'
+import { CARD_SURFACE, ERROR_BANNER, PRIMARY_BUTTON, SEGMENT, SEGMENTED, SEGMENT_OFF, SEGMENT_ON } from '@/components/ui'
 
 interface LoadedNote {
   id: number
@@ -253,7 +253,7 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
       )}
 
       {!isLoading && notes.length === 0 && (
-        <div className="rounded-3xl bg-slate-900 px-6 py-16 text-center">
+        <div className={`rounded-3xl px-6 py-16 text-center ${CARD_SURFACE}`}>
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-700 text-slate-300">
             <NotesIcon className="h-7 w-7" />
           </div>
@@ -270,7 +270,7 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
       )}
 
       {!isLoading && notes.length > 0 && visibleNotes.length === 0 && (
-        <div className="rounded-3xl bg-slate-900 py-12 text-center text-sm text-slate-500">
+        <div className={`rounded-3xl py-12 text-center text-sm text-slate-500 ${CARD_SURFACE}`}>
           No notes match &ldquo;{searchQuery}&rdquo;
         </div>
       )}
@@ -282,7 +282,7 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
             if (!note.content) {
               // Neutral, with a status icon, like every other error since 3.5; not openable
               return (
-                <div key={note.id} className="aspect-square rounded-2xl bg-slate-900 p-4 flex flex-col items-center justify-center gap-2 text-center">
+                <div key={note.id} className={`aspect-square rounded-2xl p-4 flex flex-col items-center justify-center gap-2 text-center ${CARD_SURFACE}`}>
                   <WarningIcon className="h-5 w-5 text-danger" />
                   <p className="text-sm text-primary">Couldn&apos;t read this note.</p>
                 </div>
@@ -320,7 +320,7 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
 
       {/* Compact list: one row per note, in one card */}
       {view === 'list' && visibleNotes.length > 0 && (
-        <ul className="divide-y divide-slate-700 overflow-hidden rounded-3xl bg-slate-900">
+        <ul className={`divide-y divide-slate-700 overflow-hidden rounded-3xl ${CARD_SURFACE}`}>
           {visibleNotes.map(note => {
             if (!note.content) {
               return (

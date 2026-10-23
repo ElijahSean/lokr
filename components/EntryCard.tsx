@@ -29,7 +29,7 @@ import type { StrengthResult } from '@/lib/generator'
 import {
   CheckIcon, ChevronDownIcon, CopyIcon, EyeIcon, EyeOffIcon, PencilIcon, TrashIcon, WarningIcon,
 } from '@/components/Icons'
-import { CHIP, CHIP_DOT, DANGER_OUTLINE, STATUS_DOT, STRENGTH_TONE } from '@/components/ui'
+import { CARD_SURFACE, CHIP, CHIP_DOT, DANGER_OUTLINE, STATUS_DOT, STRENGTH_TONE } from '@/components/ui'
 
 // Show age warning if password hasn't changed in 90 days
 const AGE_WARNING_THRESHOLD_MS = 90 * 24 * 60 * 60 * 1000
@@ -231,7 +231,7 @@ export default function EntryCard({
   const pinOrPassword = isPIN ? 'PIN' : 'password'
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 hover:border-slate-700 transition-colors animate-fade-in">
+    <div className={`border border-slate-800 rounded-2xl p-4 sm:p-5 hover:border-slate-700 transition-colors animate-fade-in ${CARD_SURFACE}`}>
 
       {/* Header: tile, site and username, chips; edit and delete on the right */}
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">

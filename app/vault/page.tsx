@@ -11,8 +11,8 @@
  *    except while a sticky note is open full-window (task 2.7); useIdleLock
  *    re-checks the clock when the tab returns, so the 5-minute rule still holds
  *
- * Layout (task 3.2: YouVersion's mixed look, a dark `ink` top bar and footer
- * over the light page):
+ * Layout (task 3.6: a matte-white shell in the system light theme and a
+ * restrained glossy-charcoal shell in dark mode):
  *  ┌───────────────────────────────────────────────────────────┐
  *  │  Header: Lokr logo   [pill tabs]   [lock button]          │
  *  ├───────────────────────────────────────────────────────────┤
@@ -35,6 +35,7 @@ import ExportImport from '@/components/ExportImport'
 import StickyNotes from '@/components/StickyNotes'
 import { LokrIcon } from '@/components/LokrLogo'
 import { BackupIcon, GeneratorIcon, HealthIcon, LockIcon, NotesIcon, VaultIcon } from '@/components/Icons'
+import { BRAND_FINISH, SHELL_SURFACE } from '@/components/ui'
 
 // Navigation tab definitions
 type Tab = 'vault' | 'notes' | 'generator' | 'health' | 'export'
@@ -81,13 +82,13 @@ export default function VaultPage() {
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col">
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      {/* In dark mode the page is the bar's own colour, so a hairline keeps them apart (task 3.1) */}
-      <header className="bg-ink sticky top-0 z-10 dark:border-b dark:border-ink-border">
+      {/* The shared shell recipe is flat in light mode and glossy only in dark. */}
+      <header className={`sticky top-0 z-10 border-b border-shell-border ${SHELL_SURFACE}`}>
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           {/* Logo + wordmark */}
           <div className="flex items-center gap-2">
             <LokrIcon size={32} />
-            <span className="text-ink-text font-semibold text-lg tracking-tight">Lokr</span>
+            <span className="text-shell-text font-semibold text-lg tracking-tight">Lokr</span>
           </div>
 
           {/* Navigation tabs — shown from md (768px): between 640 and ~700px the
@@ -101,8 +102,8 @@ export default function VaultPage() {
                 className={`
                   flex items-center gap-2 px-3.5 py-2 rounded-full text-sm font-medium transition-colors
                   ${activeTab === tab.id
-                    ? 'bg-ink-text text-ink'
-                    : 'text-ink-muted hover:text-ink-text hover:bg-ink-surface'
+                    ? BRAND_FINISH
+                    : 'text-shell-muted hover:text-shell-text hover:bg-shell-surface'
                   }
                 `}
               >
@@ -116,7 +117,7 @@ export default function VaultPage() {
           <button
             onClick={lock}
             title="Lock vault"
-            className="flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-ink-muted hover:text-ink-text hover:bg-ink-surface transition-colors"
+            className="flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-shell-muted hover:text-shell-text hover:bg-shell-surface transition-colors"
           >
             <LockIcon className="w-4 h-4" />
             <span className="hidden md:inline">Lock</span>
@@ -125,7 +126,7 @@ export default function VaultPage() {
 
         {/* Mobile tab bar — visible only on small screens. aria-current added in
             3.2 so screen readers hear the current tab here too, as on desktop */}
-        <nav className="md:hidden flex border-t border-ink-border" aria-label="Mobile navigation">
+        <nav className="md:hidden flex border-t border-shell-border" aria-label="Mobile navigation">
           {TABS.map(tab => (
             <button
               key={tab.id}
@@ -134,8 +135,8 @@ export default function VaultPage() {
               className={`
                 flex-1 py-2.5 text-xs font-medium flex flex-col items-center gap-1
                 ${activeTab === tab.id
-                  ? 'text-ink-text border-t-2 border-ink-text -mt-px'
-                  : 'text-ink-muted'
+                  ? 'text-brand-600 border-t-2 border-brand-500 -mt-px'
+                  : 'text-shell-muted'
                 }
               `}
             >
@@ -158,7 +159,7 @@ export default function VaultPage() {
       </main>
 
       {/* ── Footer ──────────────────────────────────────────────────────── */}
-      <footer className="bg-ink py-3 text-center text-xs text-ink-subtle">
+      <footer className={`py-3 text-center text-xs text-shell-subtle ${SHELL_SURFACE}`}>
         Lokr — Your secrets, your machine. &nbsp;·&nbsp; All data stays local.
       </footer>
     </div>
