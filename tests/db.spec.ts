@@ -7,7 +7,12 @@
 import 'fake-indexeddb/auto'
 
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { clearAllVaultData, db } from '@/lib/db'
+import {
+  clearAllVaultData,
+  db,
+  deleteStickyNote,
+  saveStickyNoteWithPicture,
+} from '@/lib/db'
 
 beforeEach(async () => {
   await db.delete()
@@ -41,11 +46,16 @@ async function seedEveryTable(): Promise<void> {
     iv: 'aGlzdG9yeS1pdg==',
     replacedAt: new Date('2026-01-01T12:00:00.000Z'),
   })
-  await db.sticky_notes.add({
+  const noteId = await db.sticky_notes.add({
     encryptedNote: 'bm90ZQ==',
     iv: 'bm90ZS1pdg==',
     createdAt: new Date('2026-01-03T00:00:00.000Z'),
     updatedAt: new Date('2026-01-04T00:00:00.000Z'),
+  }) as number
+  await db.note_pictures.add({
+    noteId,
+    ciphertext: new Uint8Array(16).fill(3).buffer,
+    iv: new Uint8Array(12).fill(4).buffer,
   })
   await db.vault_meta.put({
     id: 1,
@@ -63,6 +73,7 @@ async function databaseSnapshot(): Promise<string> {
     health: await db.health_flags.orderBy('entryId').toArray(),
     history: await db.password_history.orderBy('id').toArray(),
     notes: await db.sticky_notes.orderBy('id').toArray(),
+    pictures: await db.note_pictures.orderBy('id').toArray(),
     meta: await db.vault_meta.orderBy('id').toArray(),
   })
 }
@@ -78,8 +89,9 @@ describe('clearAllVaultData', () => {
       health: await db.health_flags.count(),
       history: await db.password_history.count(),
       notes: await db.sticky_notes.count(),
+      pictures: await db.note_pictures.count(),
       meta: await db.vault_meta.count(),
-    }).toEqual({ entries: 0, health: 0, history: 0, notes: 0, meta: 0 })
+    }).toEqual({ entries: 0, health: 0, history: 0, notes: 0, pictures: 0, meta: 0 })
   })
 
   it('rolls back every table when a middle clear fails', async () => {
@@ -92,5 +104,37 @@ describe('clearAllVaultData', () => {
     clearHistory.mockRestore()
 
     expect(await databaseSnapshot()).toBe(before)
+  })
+})
+
+describe('sticky-note picture transactions', () => {
+  it('deletes a note and all of its pictures together', async () => {
+    await seedEveryTable()
+    const note = await db.sticky_notes.orderBy('id').first()
+    await deleteStickyNote(note!.id!)
+    expect(await db.sticky_notes.count()).toBe(0)
+    expect(await db.note_pictures.count()).toBe(0)
+  })
+
+  it('refuses a sixth picture without updating the note', async () => {
+    await seedEveryTable()
+    const note = await db.sticky_notes.orderBy('id').first()
+    await db.note_pictures.bulkAdd(Array.from({ length: 4 }, (_, index) => ({
+      noteId: note!.id!,
+      ciphertext: new Uint8Array(16).fill(index + 5).buffer,
+      iv: new Uint8Array(12).fill(index + 5).buffer,
+    })))
+    const before = await db.sticky_notes.get(note!.id!)
+
+    await expect(saveStickyNoteWithPicture(
+      note!.id!,
+      'changed-note',
+      'changed-iv',
+      new Uint8Array(16).buffer,
+      new Uint8Array(12).buffer,
+    )).rejects.toThrow('up to 5 pictures')
+
+    expect(await db.note_pictures.count()).toBe(5)
+    expect(await db.sticky_notes.get(note!.id!)).toEqual(before)
   })
 })

@@ -6,6 +6,8 @@
  * save). All notes are decrypted when the tab opens, for the previews and the
  * search; the plaintext lives only in this component's state, which is
  * discarded on tab switch and on lock (the vault page unmounts).
+ * Picture bytes are not part of that list load; StickyNoteView decrypts them
+ * only after their note opens and revokes every object URL when it closes.
  *
  * Every write goes through lib/db.ts and is followed by updateVaultSignature(),
  * because the vault HMAC covers sticky_notes.
@@ -18,10 +20,14 @@ import { useSession } from '@/hooks/useSession'
 import {
   listStickyNotes,
   addStickyNote,
+  addStickyNoteWithPictures,
+  countNotePictures,
+  deleteNotePicture,
   updateStickyNote,
   deleteStickyNote,
+  saveStickyNoteWithPicture,
 } from '@/lib/db'
-import { encryptEntry, decryptEntry } from '@/lib/crypto'
+import { encryptBytes, encryptEntry, decryptEntry } from '@/lib/crypto'
 import {
   encodeNote,
   decodeNote,
@@ -37,6 +43,7 @@ import { CARD_SURFACE, ERROR_BANNER, INPUT, PRIMARY_BUTTON, QUIET_BUTTON, SEGMEN
 import {
   NOTE_IMPORT_ACCEPT,
   assertFileSize,
+  assertTextFileSize,
   noteFromTextFile,
   noteImportKind,
   openNoteFile,
@@ -47,6 +54,7 @@ interface LoadedNote {
   /** null when the blob would not decrypt or decode; shown as an error card */
   content: NoteContent | null
   updatedAt: Date
+  pictureCount: number
 }
 
 interface OpenNote {
@@ -131,9 +139,19 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
       rows.map(async (row): Promise<LoadedNote> => {
         try {
           const json = await decryptEntry(encryptionKey, row.encryptedNote, row.iv)
-          return { id: row.id!, content: decodeNote(json), updatedAt: row.updatedAt }
+          return {
+            id: row.id!,
+            content: decodeNote(json),
+            updatedAt: row.updatedAt,
+            pictureCount: await countNotePictures(row.id!),
+          }
         } catch {
-          return { id: row.id!, content: null, updatedAt: row.updatedAt }
+          return {
+            id: row.id!,
+            content: null,
+            updatedAt: row.updatedAt,
+            pictureCount: await countNotePictures(row.id!),
+          }
         }
       })
     )
@@ -154,6 +172,23 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
     return noteId
   }
 
+  /** Imports a complete note only after every picture has been encrypted in memory. */
+  async function persistImported(content: NoteContent, pictures: Uint8Array[]): Promise<number> {
+    if (!encryptionKey) throw new Error('Vault is locked.')
+    const encryptedNote = await encryptEntry(encryptionKey, encodeNote(content))
+    const encryptedPictures = await Promise.all(
+      pictures.map(picture => encryptBytes(encryptionKey, picture)),
+    )
+    const noteId = await addStickyNoteWithPictures(
+      encryptedNote.ciphertext,
+      encryptedNote.iv,
+      encryptedPictures,
+    )
+    await updateVaultSignature()
+    await loadNotes()
+    return noteId
+  }
+
   async function handleSave(content: NoteContent): Promise<string | null> {
     if (!openNote) return null
     try {
@@ -162,6 +197,47 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
       return null
     } catch (err) {
       return err instanceof Error ? err.message : 'Could not save the note.'
+    }
+  }
+
+  async function handleAddPicture(
+    content: NoteContent,
+    bytes: Uint8Array,
+  ): Promise<{ noteId: number; pictureId: number; error: string | null }> {
+    if (!openNote || !encryptionKey) {
+      return { noteId: 0, pictureId: 0, error: 'Vault is locked.' }
+    }
+    try {
+      const encryptedNote = await encryptEntry(encryptionKey, encodeNote(content))
+      const encryptedPicture = await encryptBytes(encryptionKey, bytes)
+      const result = await saveStickyNoteWithPicture(
+        openNote.id,
+        encryptedNote.ciphertext,
+        encryptedNote.iv,
+        encryptedPicture.ciphertext,
+        encryptedPicture.iv,
+      )
+      await updateVaultSignature()
+      setOpenNote(current => current ? { ...current, id: result.noteId, content } : current)
+      await loadNotes()
+      return { ...result, error: null }
+    } catch (err) {
+      return {
+        noteId: openNote.id ?? 0,
+        pictureId: 0,
+        error: err instanceof Error ? err.message : 'Could not attach the picture.',
+      }
+    }
+  }
+
+  async function handleDeletePicture(id: number): Promise<string | null> {
+    try {
+      await deleteNotePicture(id)
+      await updateVaultSignature()
+      await loadNotes()
+      return null
+    } catch (err) {
+      return err instanceof Error ? err.message : 'Could not remove the picture.'
     }
   }
 
@@ -196,12 +272,13 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
     setImportPassword('')
     try {
       const kind = noteImportKind(file.name)
-      assertFileSize(file.size)
       if (kind === 'lokrnote') {
+        assertFileSize(file.size)
         setPendingImport(file)
         return
       }
 
+      assertTextFileSize(file.size)
       setIsImporting(true)
       const content = noteFromTextFile(file.name, new Uint8Array(await file.arrayBuffer()))
       await persist(null, content)
@@ -221,8 +298,8 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
     try {
       // The file-derived key only decrypts in memory; persist() re-encrypts the
       // validated note under this vault's key and re-signs the whole vault.
-      const content = await openNoteFile(await pendingImport.text(), importPassword)
-      await persist(null, content)
+      const imported = await openNoteFile(await pendingImport.text(), importPassword)
+      await persistImported(imported.content, imported.pictures)
       setPendingImport(null)
       setImportPassword('')
       setImportSuccess(true)
@@ -431,6 +508,7 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
                   </span>
                   <span className={`block mt-2 text-xs ${tone.faint}`}>
                     {note.updatedAt.toLocaleDateString()}
+                    {note.pictureCount > 0 && ` · ${note.pictureCount} ${note.pictureCount === 1 ? 'picture' : 'pictures'}`}
                   </span>
                 </button>
                 <PinButton note={note} onToggle={handleTogglePin} tone={classes.tone} className="absolute top-2.5 right-2.5" />
@@ -470,6 +548,7 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
                     {firstLine && <span className="block text-xs text-slate-500 truncate">{firstLine}</span>}
                   </span>
                   <span className="text-xs text-slate-500 shrink-0 hidden sm:inline">
+                    {note.pictureCount > 0 && `${note.pictureCount} ${note.pictureCount === 1 ? 'picture' : 'pictures'} · `}
                     {note.updatedAt.toLocaleDateString()}
                   </span>
                 </button>
@@ -487,8 +566,11 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
       <StickyNoteView
         key={openNote.key}
         initial={openNote.content}
+        noteId={openNote.id}
         isNew={openNote.id === null}
         onSave={handleSave}
+        onAddPicture={handleAddPicture}
+        onDeletePicture={handleDeletePicture}
         onDelete={handleDelete}
         onClose={handleClose}
       />

@@ -4,8 +4,10 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   NOTE_FILE_MAX_BYTES,
+  NOTE_TEXT_FILE_MAX_BYTES,
   NOTE_FILE_NAME,
   createNoteFile,
+  assertFileSize,
   noteFromTextFile,
   noteImportKind,
   openNoteFile,
@@ -44,31 +46,57 @@ beforeAll(() => {
 
 afterAll(() => vi.unstubAllGlobals())
 
-describe('.lokrnote version 1', () => {
-  it('round-trips rich note content without plaintext in the file', async () => {
-    const file = await createNoteFile(NOTE, PASSWORD)
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+describe('.lokrnote version 2', () => {
+  it('round-trips rich note content and pictures without plaintext in the file', async () => {
+    const file = await createNoteFile(NOTE, PASSWORD, [PNG])
 
     expect(NOTE_FILE_NAME).toBe('lokr-note.lokrnote')
     expect(file).not.toContain(NOTE.title)
     expect(file).not.toContain('Private heading')
-    expect(await openNoteFile(file, PASSWORD)).toEqual(NOTE)
+    const opened = await openNoteFile(file, PASSWORD)
+    expect(opened.content).toEqual(NOTE)
+    expect(opened.pictures).toEqual([PNG])
   }, SLOW)
 
   it('uses a fresh salt and IV for every export', async () => {
-    const first = JSON.parse(await createNoteFile(NOTE, PASSWORD)) as Record<string, unknown>
-    const second = JSON.parse(await createNoteFile(NOTE, PASSWORD)) as Record<string, unknown>
+    const first = JSON.parse(await createNoteFile(NOTE, PASSWORD, [PNG])) as Record<string, unknown>
+    const second = JSON.parse(await createNoteFile(NOTE, PASSWORD, [PNG])) as Record<string, unknown>
 
     expect(first.salt).not.toBe(second.salt)
-    expect(first.iv).not.toBe(second.iv)
-    expect(first.ciphertext).not.toBe(second.ciphertext)
+    expect((first.note as Record<string, unknown>).iv).not.toBe((second.note as Record<string, unknown>).iv)
+    expect((first.note as Record<string, unknown>).ciphertext).not.toBe(
+      (second.note as Record<string, unknown>).ciphertext,
+    )
+    expect(((first.pictures as Array<Record<string, unknown>>)[0]).iv).not.toBe(
+      ((second.pictures as Array<Record<string, unknown>>)[0]).iv,
+    )
+  }, SLOW)
+
+  it('refuses tampered picture ciphertext and invalid picture limits', async () => {
+    const file = JSON.parse(await createNoteFile(NOTE, PASSWORD, [PNG])) as {
+      pictures: Array<{ ciphertext: string }>
+    }
+    const ciphertext = file.pictures[0].ciphertext
+    file.pictures[0].ciphertext = `${ciphertext[0] === 'A' ? 'B' : 'A'}${ciphertext.slice(1)}`
+    await expect(openNoteFile(JSON.stringify(file), PASSWORD)).rejects.toThrow(
+      'Incorrect file password or damaged note file.',
+    )
+    await expect(createNoteFile(NOTE, PASSWORD, Array.from({ length: 6 }, () => PNG))).rejects.toThrow(
+      'up to 5 pictures',
+    )
+    await expect(createNoteFile(NOTE, PASSWORD, [new Uint8Array([0x4d, 0x5a])])).rejects.toThrow(
+      'PNG, JPEG, WebP or GIF',
+    )
   }, SLOW)
 
   it('refuses a wrong password and tampered ciphertext', async () => {
     const file = await createNoteFile(NOTE, PASSWORD)
     await expect(openNoteFile(file, WRONG_PASSWORD)).rejects.toThrow('Incorrect file password or damaged note file.')
 
-    const tampered = JSON.parse(file) as { ciphertext: string }
-    tampered.ciphertext = `${tampered.ciphertext[0] === 'A' ? 'B' : 'A'}${tampered.ciphertext.slice(1)}`
+    const tampered = JSON.parse(file) as { note: { ciphertext: string } }
+    tampered.note.ciphertext = `${tampered.note.ciphertext[0] === 'A' ? 'B' : 'A'}${tampered.note.ciphertext.slice(1)}`
     await expect(openNoteFile(JSON.stringify(tampered), PASSWORD)).rejects.toThrow(
       'Incorrect file password or damaged note file.',
     )
@@ -77,10 +105,10 @@ describe('.lokrnote version 1', () => {
   it('refuses truncated, unrelated, unsupported and oversized files', async () => {
     await expect(openNoteFile('{', PASSWORD)).rejects.toThrow("isn't a valid Lokr note file")
     await expect(openNoteFile(JSON.stringify({ hello: 'world' }), PASSWORD)).rejects.toThrow("isn't a valid Lokr note file")
-    await expect(openNoteFile(JSON.stringify({ format: 'lokr-note', version: 2 }), PASSWORD)).rejects.toThrow(
+    await expect(openNoteFile(JSON.stringify({ format: 'lokr-note', version: 3 }), PASSWORD)).rejects.toThrow(
       'version is not supported',
     )
-    await expect(openNoteFile('x'.repeat(NOTE_FILE_MAX_BYTES + 1), PASSWORD)).rejects.toThrow('100 KB')
+    expect(() => assertFileSize(NOTE_FILE_MAX_BYTES + 1)).toThrow('40 MB')
   })
 
   it('sanitises imported rich documents through the note schema', async () => {
@@ -119,10 +147,11 @@ describe('.lokrnote version 1', () => {
     })
 
     const restored = await openNoteFile(file, PASSWORD)
-    expect(restored.body).toEqual({
+    expect(restored.content.body).toEqual({
       type: 'doc',
       content: [{ type: 'paragraph', content: [{ type: 'text', text: 'keep me' }] }],
     })
+    expect(restored.pictures).toEqual([])
   }, SLOW)
 })
 
@@ -153,6 +182,6 @@ describe('plaintext note imports', () => {
     expect(noteImportKind('note.MD')).toBe('text')
     expect(() => noteImportKind('note.json')).toThrow('.lokrnote, .txt or .md')
     expect(() => noteFromTextFile('note.txt', new Uint8Array([0xc3, 0x28]))).toThrow('UTF-8')
-    expect(() => noteFromTextFile('note.txt', new Uint8Array(NOTE_FILE_MAX_BYTES + 1))).toThrow('100 KB')
+    expect(() => noteFromTextFile('note.txt', new Uint8Array(NOTE_TEXT_FILE_MAX_BYTES + 1))).toThrow('100 KB')
   })
 })

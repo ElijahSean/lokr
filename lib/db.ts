@@ -15,9 +15,11 @@
  *   - health_flags:  Cached security analysis per entry (strength, duplicates, age)
  *   - password_history: Encrypted previous passwords per entry
  *   - sticky_notes:  Encrypted free-standing notes (title, body, colour, pin as one blob)
+ *   - note_pictures: Encrypted binary picture attachments, related to one sticky note
  */
 
 import Dexie, { type Table } from 'dexie'
+import { NOTE_PICTURE_LIMIT } from './pictures'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 // These interfaces describe the shape of each record stored in IndexedDB.
@@ -65,6 +67,14 @@ export interface StickyNote {
   updatedAt: Date
 }
 
+/** A picture attachment. Only encrypted bytes and their IV cross the storage boundary. */
+export interface NotePicture {
+  id?: number
+  noteId: number
+  ciphertext: ArrayBuffer
+  iv: ArrayBuffer
+}
+
 /**
  * Vault metadata — there is exactly ONE of these records (id = 1).
  * It holds the Argon2 salt and the vault's integrity signature.
@@ -101,6 +111,7 @@ class LokrDatabase extends Dexie {
   health_flags!:     Table<HealthFlag>
   password_history!: Table<PasswordHistory>
   sticky_notes!:     Table<StickyNote>
+  note_pictures!:    Table<NotePicture>
 
   constructor() {
     super('LokrDB')
@@ -139,6 +150,17 @@ class LokrDatabase extends Dexie {
       password_history: '++id, entryId, replacedAt',
       sticky_notes: '++id, updatedAt',
     })
+
+    // Version 4 (task 2.6) adds separately encrypted binary picture records.
+    // noteId is the only indexed metadata; type is re-sniffed after decryption.
+    this.version(4).stores({
+      vault_entries: '++id, site, username, createdAt, updatedAt',
+      vault_meta: '++id',
+      health_flags: 'entryId',
+      password_history: '++id, entryId, replacedAt',
+      sticky_notes: '++id, updatedAt',
+      note_pictures: '++id, noteId',
+    })
   }
 }
 
@@ -154,16 +176,20 @@ export const db = new LokrDatabase()
 export async function clearAllVaultData(): Promise<void> {
   await db.transaction(
     'rw',
-    db.vault_entries,
-    db.health_flags,
-    db.password_history,
-    db.sticky_notes,
-    db.vault_meta,
+    [
+      db.vault_entries,
+      db.health_flags,
+      db.password_history,
+      db.sticky_notes,
+      db.note_pictures,
+      db.vault_meta,
+    ],
     async () => {
       await db.vault_entries.clear()
       await db.health_flags.clear()
       await db.password_history.clear()
       await db.sticky_notes.clear()
+      await db.note_pictures.clear()
       await db.vault_meta.clear()
     },
   )
@@ -193,9 +219,92 @@ export async function updateStickyNote(id: number, encryptedNote: string, iv: st
 }
 
 export async function deleteStickyNote(id: number): Promise<void> {
-  await db.sticky_notes.delete(id)
+  await db.transaction('rw', db.sticky_notes, db.note_pictures, async () => {
+    await db.note_pictures.where('noteId').equals(id).delete()
+    await db.sticky_notes.delete(id)
+  })
 }
 
 export async function clearStickyNotes(): Promise<void> {
-  await db.sticky_notes.clear()
+  await db.transaction('rw', db.sticky_notes, db.note_pictures, async () => {
+    await db.note_pictures.clear()
+    await db.sticky_notes.clear()
+  })
+}
+
+// ─── Note Pictures ──────────────────────────────────────────────────────────
+
+export async function listAllNotePictures(): Promise<NotePicture[]> {
+  return db.note_pictures.orderBy('id').toArray()
+}
+
+export async function listNotePictures(noteId: number): Promise<NotePicture[]> {
+  return db.note_pictures.where('noteId').equals(noteId).sortBy('id')
+}
+
+export async function countNotePictures(noteId: number): Promise<number> {
+  return db.note_pictures.where('noteId').equals(noteId).count()
+}
+
+/** Saves the current note draft and one picture atomically; a failed limit check writes neither. */
+export async function saveStickyNoteWithPicture(
+  noteId: number | null,
+  encryptedNote: string,
+  noteIv: string,
+  ciphertext: ArrayBuffer,
+  pictureIv: ArrayBuffer,
+): Promise<{ noteId: number; pictureId: number }> {
+  return db.transaction('rw', db.sticky_notes, db.note_pictures, async () => {
+    const now = new Date()
+    let storedNoteId = noteId
+    if (storedNoteId === null) {
+      storedNoteId = await db.sticky_notes.add({
+        encryptedNote,
+        iv: noteIv,
+        createdAt: now,
+        updatedAt: now,
+      }) as number
+    } else {
+      const count = await db.note_pictures.where('noteId').equals(storedNoteId).count()
+      if (count >= NOTE_PICTURE_LIMIT) {
+        throw new Error(`A note can have up to ${NOTE_PICTURE_LIMIT} pictures.`)
+      }
+      await db.sticky_notes.update(storedNoteId, { encryptedNote, iv: noteIv, updatedAt: now })
+    }
+
+    const pictureId = await db.note_pictures.add({
+      noteId: storedNoteId,
+      ciphertext,
+      iv: pictureIv,
+    }) as number
+    return { noteId: storedNoteId, pictureId }
+  })
+}
+
+/** Creates an imported note and all of its already-encrypted pictures in one transaction. */
+export async function addStickyNoteWithPictures(
+  encryptedNote: string,
+  noteIv: string,
+  pictures: ReadonlyArray<{ ciphertext: ArrayBuffer; iv: ArrayBuffer }>,
+): Promise<number> {
+  if (pictures.length > NOTE_PICTURE_LIMIT) {
+    throw new Error(`A note can have up to ${NOTE_PICTURE_LIMIT} pictures.`)
+  }
+  return db.transaction('rw', db.sticky_notes, db.note_pictures, async () => {
+    const now = new Date()
+    const noteId = await db.sticky_notes.add({
+      encryptedNote,
+      iv: noteIv,
+      createdAt: now,
+      updatedAt: now,
+    }) as number
+    if (pictures.length > 0) {
+      await db.note_pictures.bulkAdd(pictures.map(picture => ({ noteId, ...picture })))
+    }
+    return noteId
+  })
+}
+
+export async function deleteNotePicture(id: number): Promise<void> {
+  await db.note_pictures.delete(id)
 }

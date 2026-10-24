@@ -38,7 +38,8 @@ export function buildContentSecurityPolicy(
     "default-src 'self'",
     `script-src ${scriptSources.join(' ')}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:",
+    // Decrypted note pictures use revocable in-memory object URLs, never data strings.
+    "img-src 'self' data: blob:",
     "object-src 'none'",
     `connect-src ${isDevelopment ? "'self'" : "'none'"}`,
     "frame-ancestors 'none'",

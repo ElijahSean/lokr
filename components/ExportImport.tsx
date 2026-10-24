@@ -60,7 +60,11 @@ export default function ExportImport() {
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importPassword, setImportPassword] = useState('')
   const [isImporting, setIsImporting] = useState(false)
-  const [importResult, setImportResult] = useState<{ count: number; noteCount: number } | null>(null)
+  const [importResult, setImportResult] = useState<{
+    count: number
+    noteCount: number
+    pictureCount: number
+  } | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Local sticky notes a full-replacement restore would overwrite.
@@ -144,7 +148,14 @@ export default function ExportImport() {
 
       // Derives keys from the FILE's salt + the entered password, verifies the
       // HMAC, replaces all local data, and re-signs the vault.
-      const { count, noteCount: restoredNoteCount, encryptionKey: newEncKey, hmacKey: newHmacKey, lastBackupAt } =
+      const {
+        count,
+        noteCount: restoredNoteCount,
+        pictureCount: restoredPictureCount,
+        encryptionKey: newEncKey,
+        hmacKey: newHmacKey,
+        lastBackupAt,
+      } =
         await restoreVaultFile(importPassword, content)
 
       // The restored vault may have a different salt/password than the current
@@ -152,7 +163,7 @@ export default function ExportImport() {
       adoptSessionKeys(newEncKey, newHmacKey)
       setLastBackupDate(lastBackupAt)
 
-      setImportResult({ count, noteCount: restoredNoteCount })
+      setImportResult({ count, noteCount: restoredNoteCount, pictureCount: restoredPictureCount })
       setImportFile(null)
       setImportPassword('')
       setNoteCount(0)
@@ -351,7 +362,8 @@ export default function ExportImport() {
           <p className="text-primary text-sm flex items-center gap-2" role="status">
             <CheckIcon className="w-4 h-4 text-success" />
             Imported {importResult.count} entries and {importResult.noteCount}
-            {' '}{importResult.noteCount === 1 ? 'note' : 'notes'} successfully.
+            {' '}{importResult.noteCount === 1 ? 'note' : 'notes'} with {importResult.pictureCount}
+            {' '}{importResult.pictureCount === 1 ? 'picture' : 'pictures'} successfully.
           </p>
         )}
         {importError && (

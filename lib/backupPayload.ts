@@ -30,6 +30,14 @@ export type BackupNote = Omit<StickyNote, 'id' | 'createdAt' | 'updatedAt'> & {
   updatedAt: BackupDate
 }
 
+/** Binary fields are base64 only while travelling through the JSON backup. */
+export interface BackupPicture {
+  id: number
+  noteId: number
+  ciphertext: string
+  iv: string
+}
+
 export function buildBackupPayloadV2(
   salt: string,
   entries: readonly BackupEntry[],
@@ -47,4 +55,15 @@ export function buildBackupPayloadV3(
 ): string {
   // Key order is part of the signed bytes: version, salt, entries, history, notes.
   return JSON.stringify({ version: 3, salt, entries, history, notes })
+}
+
+export function buildBackupPayloadV4(
+  salt: string,
+  entries: readonly BackupEntry[],
+  history: readonly BackupHistory[],
+  notes: readonly BackupNote[],
+  pictures: readonly BackupPicture[],
+): string {
+  // Key order is signed: version, salt, entries, history, notes, pictures.
+  return JSON.stringify({ version: 4, salt, entries, history, notes, pictures })
 }

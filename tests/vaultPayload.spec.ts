@@ -5,8 +5,8 @@
  * specs fails, every existing vault would fail its HMAC check on unlock.
  */
 import { describe, it, expect } from 'vitest'
-import { buildVaultPayload } from '@/lib/vaultPayload'
-import type { VaultEntry, StickyNote } from '@/lib/db'
+import { buildVaultPayload, buildVaultPayloadWithPictures } from '@/lib/vaultPayload'
+import type { NotePicture, VaultEntry, StickyNote } from '@/lib/db'
 
 const SALT = 'c2FsdHNhbHRzYWx0c2FsdA=='
 
@@ -26,6 +26,13 @@ const NOTE: StickyNote = {
   iv: 'bm90ZWl2bm90ZWl2',
   createdAt: new Date('2026-02-03T04:05:06.000Z'),
   updatedAt: new Date('2026-02-03T04:05:06.000Z'),
+}
+
+const PICTURE: NotePicture = {
+  id: 1,
+  noteId: 1,
+  ciphertext: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]).buffer,
+  iv: new Uint8Array(12).fill(7).buffer,
 }
 
 describe('buildVaultPayload', () => {
@@ -61,5 +68,49 @@ describe('buildVaultPayload', () => {
 
   it('is deterministic for the same input', () => {
     expect(buildVaultPayload(SALT, [ENTRY], [NOTE])).toBe(buildVaultPayload(SALT, [{ ...ENTRY }], [{ ...NOTE }]))
+  })
+})
+
+describe('buildVaultPayloadWithPictures', () => {
+  it('keeps the historical payload byte-for-byte when no pictures exist', async () => {
+    await expect(buildVaultPayloadWithPictures(SALT, [ENTRY], [NOTE], [])).resolves.toBe(
+      buildVaultPayload(SALT, [ENTRY], [NOTE]),
+    )
+  })
+
+  it('signs a compact ciphertext hash, IV and note relationship', async () => {
+    const payload = await buildVaultPayloadWithPictures(SALT, [ENTRY], [NOTE], [PICTURE])
+    const parsed = JSON.parse(payload) as { pictures: Array<Record<string, unknown>> }
+    expect(parsed.pictures).toHaveLength(1)
+    expect(parsed.pictures[0]).toMatchObject({ id: 1, noteId: 1 })
+    expect(parsed.pictures[0].iv).toBe('BwcHBwcHBwcHBwcH')
+    expect(typeof parsed.pictures[0].ciphertextSha256).toBe('string')
+    expect(payload).not.toContain('"ciphertext":')
+  })
+
+  it('changes for ciphertext, IV, relationship, addition and deletion', async () => {
+    const changedCiphertext = { ...PICTURE, ciphertext: PICTURE.ciphertext.slice(0) }
+    new Uint8Array(changedCiphertext.ciphertext)[0] ^= 1
+    const changedIv = { ...PICTURE, iv: PICTURE.iv.slice(0) }
+    new Uint8Array(changedIv.iv)[0] ^= 1
+    const second = { ...PICTURE, id: 2 }
+    const payloads = await Promise.all([
+      buildVaultPayloadWithPictures(SALT, [ENTRY], [NOTE], [PICTURE]),
+      buildVaultPayloadWithPictures(SALT, [ENTRY], [NOTE], [changedCiphertext]),
+      buildVaultPayloadWithPictures(SALT, [ENTRY], [NOTE], [changedIv]),
+      buildVaultPayloadWithPictures(SALT, [ENTRY], [{ ...NOTE, id: 2 }], [{ ...PICTURE, noteId: 2 }]),
+      buildVaultPayloadWithPictures(SALT, [ENTRY], [NOTE], [PICTURE, second]),
+      buildVaultPayloadWithPictures(SALT, [ENTRY], [NOTE], []),
+    ])
+    expect(new Set(payloads).size).toBe(payloads.length)
+  })
+
+  it('refuses malformed or orphaned stored picture records', async () => {
+    await expect(buildVaultPayloadWithPictures(SALT, [ENTRY], [NOTE], [
+      { ...PICTURE, noteId: 99 },
+    ])).rejects.toThrow('tampered')
+    await expect(buildVaultPayloadWithPictures(SALT, [ENTRY], [NOTE], [
+      { ...PICTURE, iv: new Uint8Array(11).buffer },
+    ])).rejects.toThrow('tampered')
   })
 })

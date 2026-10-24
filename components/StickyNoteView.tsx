@@ -9,6 +9,8 @@
  *
  * Edits stay in the local draft until Save. Close and Escape ask before
  * discarding unsaved changes; while a confirm is showing, Escape cancels it.
+ * Pictures sit below the editor as separate attachments. Their local blob URLs
+ * are owned by this component and revoked on close, deletion or session lock.
  *
  * Layout (task 3.4): a top bar (Close; Saved, Delete, Save) over a tool row
  * (colour, Pin, Lined and task 2.2's grouped formatting controls), both on the
@@ -26,7 +28,7 @@ import {
   type NoteColour,
   type NoteContent,
 } from '@/lib/notes'
-import { CloseIcon, DownloadIcon, LinesIcon, PinIcon, TrashIcon, WarningIcon } from '@/components/Icons'
+import { CloseIcon, DownloadIcon, LinesIcon, PinIcon, TrashIcon, UploadIcon, WarningIcon } from '@/components/Icons'
 import { BRAND_FINISH, DANGER_OUTLINE, DANGER_OUTLINE_ON_DARK } from '@/components/ui'
 import { useSession } from '@/hooks/useSession'
 import {
@@ -43,6 +45,15 @@ import {
   type NoteFontSize,
 } from '@/lib/noteDoc'
 import { NoteEditorSurface, NoteFormattingToolbar, useNoteEditor } from './NoteEditor'
+import { listNotePictures } from '@/lib/db'
+import { decryptBytes } from '@/lib/crypto'
+import {
+  NOTE_PICTURE_LIMIT,
+  assertPictureSize,
+  pictureMime,
+  reencodePicture,
+  sniffPictureType,
+} from '@/lib/pictures'
 
 /** Which text a paper takes: dark text on the light papers, light text on black (task 2.8). */
 export type NoteTone = 'dark-text' | 'light-text'
@@ -113,14 +124,26 @@ export const TONE_CLASSES: Record<NoteTone, {
 
 interface StickyNoteViewProps {
   initial: NoteContent
+  noteId: number | null
   isNew: boolean
   /** Encrypts and stores the note; resolves to an error message or null. */
   onSave: (_content: NoteContent) => Promise<string | null>
+  onAddPicture: (_content: NoteContent, _bytes: Uint8Array) => Promise<{
+    noteId: number
+    pictureId: number
+    error: string | null
+  }>
+  onDeletePicture: (_id: number) => Promise<string | null>
   onDelete: () => Promise<void>
   onClose: () => void
 }
 
-type Confirm = 'none' | 'discard' | 'delete' | 'export'
+type Confirm = 'none' | 'discard' | 'delete' | 'export' | 'remove-picture'
+
+interface DisplayedPicture {
+  id: number
+  url: string
+}
 
 function sameContent(a: NoteContent, b: NoteContent): boolean {
   return a.title === b.title && JSON.stringify(a.body) === JSON.stringify(b.body) &&
@@ -128,8 +151,17 @@ function sameContent(a: NoteContent, b: NoteContent): boolean {
     a.pinned === b.pinned && a.lined === b.lined
 }
 
-export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClose }: StickyNoteViewProps) {
-  const { lock } = useSession()
+export default function StickyNoteView({
+  initial,
+  noteId,
+  isNew,
+  onSave,
+  onAddPicture,
+  onDeletePicture,
+  onDelete,
+  onClose,
+}: StickyNoteViewProps) {
+  const { lock, encryptionKey } = useSession()
   const [draft, setDraft]       = useState<NoteContent>(initial)
   const [saved, setSaved]       = useState<NoteContent>(initial)
   const [unsaved, setUnsaved]   = useState(isNew)  // a new note is unsaved until its first Save
@@ -141,7 +173,15 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
   const [filePassword, setFilePassword] = useState('')
   const [filePasswordAgain, setFilePasswordAgain] = useState('')
   const [error, setError]       = useState<string | null>(null)
+  const [pictures, setPictures] = useState<DisplayedPicture[]>([])
+  const [storedNoteId, setStoredNoteId] = useState<number | null>(noteId)
+  const [isLoadingPictures, setIsLoadingPictures] = useState(noteId !== null)
+  const [isAddingPicture, setIsAddingPicture] = useState(false)
+  const [selectedPictureId, setSelectedPictureId] = useState<number | null>(null)
+  const [pictureToRemove, setPictureToRemove] = useState<number | null>(null)
   const titleRef                = useRef<HTMLInputElement>(null)
+  const pictureInputRef         = useRef<HTMLInputElement>(null)
+  const pictureUrlsRef          = useRef(new Set<string>())
 
   const isDirty = unsaved || !sameContent(draft, saved)
   const classes = NOTE_CLASSES[draft.colour]
@@ -157,6 +197,45 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
   // Focus the title on open; the parent returns focus to the card on close.
   useEffect(() => { titleRef.current?.focus() }, [])
 
+  // Existing attachments decrypt only when this full-window note mounts. Raw
+  // byte arrays fall out of scope after each Blob is made; URLs are all revoked
+  // by this view's unmount, including a session lock.
+  useEffect(() => {
+    let cancelled = false
+    const openedNoteId = noteId
+    async function loadPictures() {
+      if (openedNoteId === null || !encryptionKey) {
+        setIsLoadingPictures(false)
+        return
+      }
+      try {
+        const rows = await listNotePictures(openedNoteId)
+        const loaded: DisplayedPicture[] = []
+        for (const row of rows) {
+          const bytes = await decryptBytes(encryptionKey, row.ciphertext, row.iv)
+          if (cancelled) break
+          const type = sniffPictureType(bytes)
+          const exact = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+          const url = URL.createObjectURL(new Blob([exact], { type: pictureMime(type) }))
+          pictureUrlsRef.current.add(url)
+          loaded.push({ id: row.id!, url })
+        }
+        if (!cancelled) setPictures(loaded)
+      } catch {
+        if (!cancelled) setError('One or more pictures could not be read.')
+      } finally {
+        if (!cancelled) setIsLoadingPictures(false)
+      }
+    }
+    void loadPictures()
+    return () => { cancelled = true }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- keyed per opening; later ID changes are a saved draft.
+
+  useEffect(() => () => {
+    for (const url of pictureUrlsRef.current) URL.revokeObjectURL(url)
+    pictureUrlsRef.current.clear()
+  }, [])
+
   // Escape: cancel an open confirm first, otherwise close (asking if dirty).
   // The listener is removed on unmount, which includes every lock.
   useEffect(() => {
@@ -164,13 +243,14 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
       if (e.key !== 'Escape') return
       e.preventDefault()
       if (isExporting) return
-      if (confirm !== 'none') setConfirm('none')
+      if (selectedPictureId !== null) setSelectedPictureId(null)
+      else if (confirm !== 'none') setConfirm('none')
       else if (isDirty) setConfirm('discard')
       else onClose()
     }
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
-  }, [confirm, isDirty, isExporting, onClose])
+  }, [confirm, isDirty, isExporting, onClose, selectedPictureId])
 
   function update(patch: Partial<NoteContent>) {
     setDraft(d => ({ ...d, ...patch }))
@@ -198,6 +278,68 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
     setJustSaved(true)
   }
 
+  async function handlePictureSelection(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setError(null)
+    setJustSaved(false)
+    setJustExported(false)
+    if (pictures.length >= NOTE_PICTURE_LIMIT) {
+      setError(`A note can have up to ${NOTE_PICTURE_LIMIT} pictures.`)
+      return
+    }
+
+    setIsAddingPicture(true)
+    try {
+      assertPictureSize(file.size)
+      const processed = await reencodePicture(new Uint8Array(await file.arrayBuffer()))
+      const result = await onAddPicture(draft, processed.bytes)
+      if (result.error) {
+        setError(result.error)
+        return
+      }
+
+      const exact = processed.bytes.buffer.slice(
+        processed.bytes.byteOffset,
+        processed.bytes.byteOffset + processed.bytes.byteLength,
+      ) as ArrayBuffer
+      const url = URL.createObjectURL(new Blob([exact], { type: processed.mime }))
+      pictureUrlsRef.current.add(url)
+      setPictures(current => [...current, { id: result.pictureId, url }])
+      setStoredNoteId(result.noteId)
+      // Attaching atomically saves the current draft alongside the picture.
+      setSaved(draft)
+      setUnsaved(false)
+      setJustSaved(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not attach the picture.')
+    } finally {
+      setIsAddingPicture(false)
+    }
+  }
+
+  async function handleRemovePicture() {
+    if (pictureToRemove === null) return
+    const id = pictureToRemove
+    const err = await onDeletePicture(id)
+    if (err) {
+      setError(err)
+      return
+    }
+    setPictures(current => {
+      const removed = current.find(picture => picture.id === id)
+      if (removed) {
+        URL.revokeObjectURL(removed.url)
+        pictureUrlsRef.current.delete(removed.url)
+      }
+      return current.filter(picture => picture.id !== id)
+    })
+    if (selectedPictureId === id) setSelectedPictureId(null)
+    setPictureToRemove(null)
+    setConfirm('none')
+  }
+
   async function handleExport() {
     const passwordError = validateNoteFilePasswords(filePassword, filePasswordAgain)
     if (passwordError) {
@@ -208,7 +350,14 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
     setIsExporting(true)
     setError(null)
     try {
-      const content = await createNoteFile(draft, filePassword)
+      const pictureBytes: Uint8Array[] = []
+      if (storedNoteId !== null && encryptionKey) {
+        const rows = await listNotePictures(storedNoteId)
+        for (const row of rows) {
+          pictureBytes.push(await decryptBytes(encryptionKey, row.ciphertext, row.iv))
+        }
+      }
+      const content = await createNoteFile(draft, filePassword, pictureBytes)
       const blob = new Blob([content], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
@@ -337,6 +486,30 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
                 Export note
               </button>
 
+              <input
+                ref={pictureInputRef}
+                type="file"
+                accept=".png,.jpg,.jpeg,.webp,.gif,image/png,image/jpeg,image/webp,image/gif"
+                onChange={event => void handlePictureSelection(event)}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null)
+                  if (pictures.length >= NOTE_PICTURE_LIMIT) {
+                    setError(`A note can have up to ${NOTE_PICTURE_LIMIT} pictures.`)
+                    return
+                  }
+                  pictureInputRef.current?.click()
+                }}
+                disabled={isAddingPicture}
+                className={`${pill} ${tone.text} ${tone.hover} disabled:opacity-50`}
+              >
+                <UploadIcon />
+                {isAddingPicture ? 'Processing…' : 'Attach picture'}
+              </button>
+
               <label className="sr-only" htmlFor="note-font-family">Font family</label>
               <select
                 id="note-font-family"
@@ -394,6 +567,29 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
                 Yes, delete
               </button>
               <button type="button" onClick={() => setConfirm('none')} className={`${pill} ${tone.secondary} ${tone.hover}`}>
+                No
+              </button>
+            </div>
+          )}
+
+          {confirm === 'remove-picture' && (
+            <div className="flex flex-wrap items-center gap-2" role="alert">
+              <span className={`flex items-center gap-2 text-sm ${tone.text}`}>
+                <WarningIcon className={`h-4 w-4 flex-shrink-0 ${tone.dangerIcon}`} />
+                Remove this picture?
+              </span>
+              <button type="button" onClick={() => void handleRemovePicture()} className={`${pill} ${tone.danger}`}>
+                <TrashIcon />
+                Yes, remove
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPictureToRemove(null)
+                  setConfirm('none')
+                }}
+                className={`${pill} ${tone.secondary} ${tone.hover}`}
+              >
                 No
               </button>
             </div>
@@ -478,12 +674,83 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
           linedClass={draft.fontSize === 'small' ? tone.linesTight : draft.fontSize === 'large' ? tone.linesLoose : tone.lines}
           lined={draft.lined}
         />
+        {(isLoadingPictures || pictures.length > 0) && (
+          <section className={`border-t pt-3 ${tone.divider}`} aria-label="Picture attachments">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h2 className={`text-sm font-medium ${tone.text}`}>Pictures</h2>
+              <span className={`text-xs ${tone.faint}`}>
+                {pictures.length} / {NOTE_PICTURE_LIMIT}
+              </span>
+            </div>
+            {isLoadingPictures ? (
+              <p className={`text-sm ${tone.muted}`}>Decrypting pictures…</p>
+            ) : (
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {pictures.map((picture, index) => (
+                  <div key={picture.id} className="relative flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPictureId(picture.id)}
+                      aria-label={`View picture ${index + 1} full size`}
+                      className={`block overflow-hidden rounded-xl border ${tone.divider} focus:outline-none focus:ring-2 ${tone.focusRing}`}
+                    >
+                      {/* Blob URLs are local decrypted memory, so Next image optimisation cannot serve them. */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={picture.url} alt={`Picture ${index + 1}`} className="h-20 w-20 object-cover sm:h-24 sm:w-24" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPictureToRemove(picture.id)
+                        setConfirm('remove-picture')
+                      }}
+                      aria-label={`Remove picture ${index + 1}`}
+                      className={`absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full border ${tone.divider} ${classes.paper} ${tone.text} ${tone.hover}`}
+                    >
+                      <TrashIcon className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
         <div className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 pt-2 text-xs ${tone.faint}`}>
           {/* Task 2.7: switching tabs or minimising doesn't lock while a note is open */}
           <p>Stays unlocked while open · locks after 5 min idle · Opening a link locks Lokr</p>
           <p>{plainBody.length.toLocaleString('en-US')} / {NOTE_BODY_MAX.toLocaleString('en-US')}</p>
         </div>
       </div>
+
+      {selectedPictureId !== null && (() => {
+        const selected = pictures.find(picture => picture.id === selectedPictureId)
+        if (!selected) return null
+        return (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/90 p-4 sm:p-8"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Full-size picture"
+            onClick={() => setSelectedPictureId(null)}
+          >
+            <button
+              type="button"
+              onClick={() => setSelectedPictureId(null)}
+              className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-slate-800 text-primary hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              aria-label="Close full-size picture"
+            >
+              <CloseIcon />
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={selected.url}
+              alt="Full-size attachment"
+              className="max-h-full max-w-full rounded-2xl object-contain"
+              onClick={event => event.stopPropagation()}
+            />
+          </div>
+        )
+      })()}
     </div>
   )
 }

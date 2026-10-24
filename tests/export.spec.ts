@@ -12,16 +12,20 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import {
   buildBackupPayloadV2,
   buildBackupPayloadV3,
+  buildBackupPayloadV4,
   type BackupEntry,
   type BackupHistory,
   type BackupNote,
+  type BackupPicture,
 } from '@/lib/backupPayload'
 import {
   base64ToBuffer,
   bufferToBase64,
   decryptEntry,
+  decryptBytes,
   deriveKeys,
   encryptEntry,
+  encryptBytes,
   signVault,
   verifyVault,
   type DerivedKeys,
@@ -30,19 +34,20 @@ import { db, type StickyNote, type VaultEntry } from '@/lib/db'
 import { buildNotesCSV, exportVaultFile, restoreVaultFile } from '@/lib/export'
 import { decodeNote, encodeNote, type NoteContent } from '@/lib/notes'
 import { plainTextToDocument, type NoteDocument } from '@/lib/noteDoc'
-import { buildVaultPayload } from '@/lib/vaultPayload'
+import { buildVaultPayload, buildVaultPayloadWithPictures } from '@/lib/vaultPayload'
 
 const PASSWORD = 'backup test master password'
 const WRONG_PASSWORD = 'backup test master passwore'
 const SALT = bufferToBase64(new Uint8Array(16).fill(13))
 const SLOW = 120_000
 
-interface ParsedVaultV3 {
-  version: 3
+interface ParsedVaultV4 {
+  version: 4
   salt: string
   entries: BackupEntry[]
   history: BackupHistory[]
   notes: BackupNote[]
+  pictures: BackupPicture[]
   signature: string
 }
 
@@ -63,8 +68,8 @@ afterAll(async () => {
   vi.unstubAllGlobals()
 })
 
-function parseV3(content: string): ParsedVaultV3 {
-  return JSON.parse(content) as ParsedVaultV3
+function parseV4(content: string): ParsedVaultV4 {
+  return JSON.parse(content) as ParsedVaultV4
 }
 
 const RICH_BODY: NoteDocument = {
@@ -111,6 +116,8 @@ const SOURCE_NOTES: NoteContent[] = [
     lined: false,
   },
 ]
+
+const SOURCE_PICTURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 async function addEncryptedEntry(
   site: string,
@@ -206,9 +213,21 @@ async function seedSourceVault(): Promise<{
     },
   ])
 
+  const storedNotes = await db.sticky_notes.orderBy('id').toArray()
+  const encryptedPicture = await encryptBytes(keys.encryptionKey, SOURCE_PICTURE)
+  await db.note_pictures.add({
+    noteId: storedNotes[0].id!,
+    ciphertext: encryptedPicture.ciphertext,
+    iv: encryptedPicture.iv,
+  })
+
   const entries = await db.vault_entries.orderBy('id').toArray()
   const notes = await db.sticky_notes.orderBy('id').toArray()
-  const signature = await signVault(keys.hmacKey, buildVaultPayload(SALT, entries, notes))
+  const pictures = await db.note_pictures.orderBy('id').toArray()
+  const signature = await signVault(
+    keys.hmacKey,
+    await buildVaultPayloadWithPictures(SALT, entries, notes, pictures),
+  )
   await db.vault_meta.put({ id: 1, salt: SALT, hmacSignature: signature, failedAttempts: 0 })
 
   return {
@@ -224,6 +243,7 @@ async function seedDestinationVault(): Promise<void> {
   await db.password_history.clear()
   await db.health_flags.clear()
   await db.sticky_notes.clear()
+  await db.note_pictures.clear()
   await db.vault_meta.clear()
 
   const entryId = await db.vault_entries.add({
@@ -247,11 +267,16 @@ async function seedDestinationVault(): Promise<void> {
     isDuplicate: false,
     ageWarning: true,
   })
-  await db.sticky_notes.add({
+  const noteId = await db.sticky_notes.add({
     encryptedNote: 'bG9jYWwtbm90ZQ==',
     iv: 'bG9jYWwtbm90ZS1pdg==',
     createdAt: new Date('2024-03-01T00:00:00.000Z'),
     updatedAt: new Date('2024-03-02T00:00:00.000Z'),
+  }) as number
+  await db.note_pictures.add({
+    noteId,
+    ciphertext: new Uint8Array(16).fill(2).buffer,
+    iv: new Uint8Array(12).fill(3).buffer,
   })
   await db.vault_meta.put({
     id: 1,
@@ -269,6 +294,11 @@ async function databaseSnapshot(): Promise<string> {
     history: await db.password_history.orderBy('id').toArray(),
     health: await db.health_flags.orderBy('entryId').toArray(),
     notes: await db.sticky_notes.orderBy('id').toArray(),
+    pictures: (await db.note_pictures.orderBy('id').toArray()).map(picture => ({
+      ...picture,
+      ciphertext: bufferToBase64(picture.ciphertext),
+      iv: bufferToBase64(picture.iv),
+    })),
     meta: await db.vault_meta.orderBy('id').toArray(),
   })
 }
@@ -299,14 +329,15 @@ function comparableNote(note: StickyNote | BackupNote): Record<string, unknown> 
   }
 }
 
-describe('version-3 .vault export and restore', () => {
-  it('exports only ciphertext and signs password history and sticky notes', async () => {
+describe('version-4 .vault export and restore', () => {
+  it('exports only ciphertext and signs history, notes and pictures', async () => {
     const { content } = await seedSourceVault()
-    const file = parseV3(content)
+    const file = parseV4(content)
 
-    expect(file.version).toBe(3)
+    expect(file.version).toBe(4)
     expect(file.history).toHaveLength(3)
     expect(file.notes).toHaveLength(2)
+    expect(file.pictures).toHaveLength(1)
     expect(file.history.every(row => !Object.hasOwn(row, 'id'))).toBe(true)
     expect(content).not.toContain('current-password')
     expect(content).not.toContain('encrypted account note')
@@ -316,14 +347,14 @@ describe('version-3 .vault export and restore', () => {
     expect(content).not.toContain('Heading')
     expect(await verifyVault(
       keys.hmacKey,
-      buildBackupPayloadV3(file.salt, file.entries, file.history, file.notes),
+      buildBackupPayloadV4(file.salt, file.entries, file.history, file.notes, file.pictures),
       file.signature,
     )).toBe(true)
   })
 
-  it('round-trips every entry and note field and re-signs their new IDs', async () => {
+  it('round-trips entries, notes and pictures and re-signs their new IDs', async () => {
     const { content, entryIds, historyPlaintext } = await seedSourceVault()
-    const file = parseV3(content)
+    const file = parseV4(content)
     const sourceNoteIds = file.notes.map(note => note.id)
     await seedDestinationVault() // Advances the key generator before restore clears it.
 
@@ -331,14 +362,23 @@ describe('version-3 .vault export and restore', () => {
     const storedEntries = await db.vault_entries.orderBy('id').toArray()
     const storedHistory = await db.password_history.orderBy('id').toArray()
     const storedNotes = await db.sticky_notes.orderBy('id').toArray()
+    const storedPictures = await db.note_pictures.orderBy('id').toArray()
 
     expect(result.count).toBe(2)
     expect(result.noteCount).toBe(2)
+    expect(result.pictureCount).toBe(1)
     expect(storedEntries.map(comparableEntry)).toEqual(file.entries.map(comparableEntry))
     expect(storedEntries.map(entry => entry.id)).not.toEqual(entryIds)
     expect(storedHistory).toHaveLength(3)
     expect(storedNotes.map(comparableNote)).toEqual(file.notes.map(comparableNote))
     expect(storedNotes.map(note => note.id)).not.toEqual(sourceNoteIds)
+    expect(storedPictures).toHaveLength(1)
+    expect(storedPictures[0].noteId).toBe(storedNotes[0].id)
+    expect(await decryptBytes(
+      result.encryptionKey,
+      storedPictures[0].ciphertext,
+      storedPictures[0].iv,
+    )).toEqual(SOURCE_PICTURE)
 
     const sourceSiteById = new Map(file.entries.map(entry => [entry.id, entry.site]))
     const storedSiteById = new Map(storedEntries.map(entry => [entry.id!, entry.site]))
@@ -381,7 +421,7 @@ describe('version-3 .vault export and restore', () => {
     expect(meta?.lastFailedAt).toBeUndefined()
     expect(await verifyVault(
       result.hmacKey,
-      buildVaultPayload(SALT, storedEntries, storedNotes),
+      await buildVaultPayloadWithPictures(SALT, storedEntries, storedNotes, storedPictures),
       meta!.hmacSignature!,
     )).toBe(true)
   }, SLOW)
@@ -411,8 +451,10 @@ describe('version-3 .vault export and restore', () => {
 
     expect(result.count).toBe(2)
     expect(result.noteCount).toBe(0)
+    expect(result.pictureCount).toBe(0)
     expect(await db.password_history.count()).toBe(0)
     expect(await db.sticky_notes.count()).toBe(0)
+    expect(await db.note_pictures.count()).toBe(0)
     expect((await db.vault_entries.orderBy('id').toArray()).map(comparableEntry)).toEqual(
       entries.map(comparableEntry),
     )
@@ -420,7 +462,7 @@ describe('version-3 .vault export and restore', () => {
 
   it('restores a version-2 backup with history and no notes', async () => {
     const { content } = await seedSourceVault()
-    const current = parseV3(content)
+    const current = parseV4(content)
     const signature = await signVault(
       keys.hmacKey,
       buildBackupPayloadV2(current.salt, current.entries, current.history),
@@ -438,15 +480,42 @@ describe('version-3 .vault export and restore', () => {
 
     expect(result.count).toBe(2)
     expect(result.noteCount).toBe(0)
+    expect(result.pictureCount).toBe(0)
     expect(await db.password_history.count()).toBe(3)
     expect(await db.sticky_notes.count()).toBe(0)
+    expect(await db.note_pictures.count()).toBe(0)
+  }, SLOW)
+
+  it('restores a version-3 backup with notes and no pictures', async () => {
+    const { content } = await seedSourceVault()
+    const current = parseV4(content)
+    const signature = await signVault(
+      keys.hmacKey,
+      buildBackupPayloadV3(current.salt, current.entries, current.history, current.notes),
+    )
+    const oldFile = JSON.stringify({
+      version: 3,
+      salt: current.salt,
+      entries: current.entries,
+      history: current.history,
+      notes: current.notes,
+      signature,
+    })
+    await seedDestinationVault()
+
+    const result = await restoreVaultFile(PASSWORD, oldFile)
+
+    expect(result.noteCount).toBe(2)
+    expect(result.pictureCount).toBe(0)
+    expect(await db.sticky_notes.count()).toBe(2)
+    expect(await db.note_pictures.count()).toBe(0)
   }, SLOW)
 })
 
 type TamperCase = {
   name: string
   password?: string
-  mutate?: (_file: ParsedVaultV3) => void
+  mutate?: (_file: ParsedVaultV4) => void
 }
 
 const TAMPER_CASES: TamperCase[] = [
@@ -482,6 +551,21 @@ const TAMPER_CASES: TamperCase[] = [
     mutate: file => { file.notes.push({ ...file.notes[0], id: 999 }) },
   },
   {
+    name: 'a picture ciphertext byte changes',
+    mutate: file => {
+      const ciphertext = file.pictures[0].ciphertext
+      file.pictures[0].ciphertext = `${ciphertext[0] === 'A' ? 'B' : 'A'}${ciphertext.slice(1)}`
+    },
+  },
+  {
+    name: 'a picture is deleted',
+    mutate: file => { file.pictures.pop() },
+  },
+  {
+    name: 'a picture is added',
+    mutate: file => { file.pictures.push({ ...file.pictures[0], id: 999 }) },
+  },
+  {
     name: 'the signature changes',
     mutate: file => { file.signature = 'AAAA' },
   },
@@ -504,7 +588,7 @@ describe('restore rejects untrusted backups before writing', () => {
 
   it.each(TAMPER_CASES)('$name', async ({ password = PASSWORD, mutate }) => {
     const { content } = await seedSourceVault()
-    const file = parseV3(content)
+    const file = parseV4(content)
     mutate?.(file)
     await seedDestinationVault()
     const before = await databaseSnapshot()
@@ -517,11 +601,11 @@ describe('restore rejects untrusted backups before writing', () => {
 
   it('rejects signed orphan history before writing', async () => {
     const { content } = await seedSourceVault()
-    const file = parseV3(content)
+    const file = parseV4(content)
     file.history[0].entryId = 999
     file.signature = await signVault(
       keys.hmacKey,
-      buildBackupPayloadV3(file.salt, file.entries, file.history, file.notes),
+      buildBackupPayloadV4(file.salt, file.entries, file.history, file.notes, file.pictures),
     )
     await seedDestinationVault()
     const before = await databaseSnapshot()
@@ -534,17 +618,51 @@ describe('restore rejects untrusted backups before writing', () => {
 
   it('rejects a signed but undecryptable note before writing', async () => {
     const { content } = await seedSourceVault()
-    const file = parseV3(content)
+    const file = parseV4(content)
     file.notes[0].encryptedNote = 'AAAA'
     file.signature = await signVault(
       keys.hmacKey,
-      buildBackupPayloadV3(file.salt, file.entries, file.history, file.notes),
+      buildBackupPayloadV4(file.salt, file.entries, file.history, file.notes, file.pictures),
     )
     await seedDestinationVault()
     const before = await databaseSnapshot()
 
     await expect(restoreVaultFile(PASSWORD, JSON.stringify(file))).rejects.toThrow(
       'Backup notes could not be decrypted with this password.',
+    )
+    expect(await databaseSnapshot()).toBe(before)
+  }, SLOW)
+
+  it('rejects a signed orphan picture before writing', async () => {
+    const { content } = await seedSourceVault()
+    const file = parseV4(content)
+    file.pictures[0].noteId = 999
+    file.signature = await signVault(
+      keys.hmacKey,
+      buildBackupPayloadV4(file.salt, file.entries, file.history, file.notes, file.pictures),
+    )
+    await seedDestinationVault()
+    const before = await databaseSnapshot()
+
+    await expect(restoreVaultFile(PASSWORD, JSON.stringify(file))).rejects.toThrow(
+      'picture references a missing note',
+    )
+    expect(await databaseSnapshot()).toBe(before)
+  }, SLOW)
+
+  it('rejects a signed but undecryptable picture before writing', async () => {
+    const { content } = await seedSourceVault()
+    const file = parseV4(content)
+    file.pictures[0].ciphertext = 'AAAA'
+    file.signature = await signVault(
+      keys.hmacKey,
+      buildBackupPayloadV4(file.salt, file.entries, file.history, file.notes, file.pictures),
+    )
+    await seedDestinationVault()
+    const before = await databaseSnapshot()
+
+    await expect(restoreVaultFile(PASSWORD, JSON.stringify(file))).rejects.toThrow(
+      'Backup pictures could not be decrypted with this password.',
     )
     expect(await databaseSnapshot()).toBe(before)
   }, SLOW)
@@ -558,18 +676,23 @@ describe('plaintext notes CSV', () => {
       colour: 'black',
     }
     const encrypted = await encryptEntry(keys.encryptionKey, encodeNote(content))
-    await db.sticky_notes.add({
+    const noteId = await db.sticky_notes.add({
       encryptedNote: encrypted.ciphertext,
       iv: encrypted.iv,
       createdAt: new Date('2025-08-09T10:11:12.000Z'),
       updatedAt: new Date('2026-08-09T10:11:12.000Z'),
+    }) as number
+    await db.note_pictures.add({
+      noteId,
+      ciphertext: new Uint8Array(16).buffer,
+      iv: new Uint8Array(12).buffer,
     })
 
     const csv = await buildNotesCSV(keys.encryptionKey)
 
     expect(csv).toBe([
-      'title,body,colour,pinned,created_at,updated_at',
-      '"\'=HYPERLINK(""x"")","Heading\nFirst\nSecond\nA | B",black,true,2025-08-09T10:11:12.000Z,2026-08-09T10:11:12.000Z',
+      'title,body,colour,pinned,picture_count,created_at,updated_at',
+      '"\'=HYPERLINK(""x"")","Heading\nFirst\nSecond\nA | B",black,true,1,2025-08-09T10:11:12.000Z,2026-08-09T10:11:12.000Z',
     ].join('\n'))
     expect(csv).not.toContain('"type":"doc"')
   })

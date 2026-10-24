@@ -39,7 +39,7 @@ import {
 import { deriveKeys, generateSalt, signVault, verifyVault, bufferToBase64, base64ToBuffer } from '@/lib/crypto'
 import { clearClipboardNow } from '@/lib/clipboard'
 import { db } from '@/lib/db'
-import { buildVaultPayload } from '@/lib/vaultPayload'
+import { buildVaultPayload, buildVaultPayloadWithPictures } from '@/lib/vaultPayload'
 
 // ─── Context Shape ────────────────────────────────────────────────────────────
 
@@ -122,7 +122,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // Load all encrypted entries and sticky notes to verify the HMAC
       const entries = await db.vault_entries.orderBy('id').toArray()
       const notes   = await db.sticky_notes.orderBy('id').toArray()
-      const payload = buildVaultPayload(meta.salt, entries, notes)
+      const pictures = await db.note_pictures.orderBy('id').toArray()
+      const payload = await buildVaultPayloadWithPictures(meta.salt, entries, notes, pictures)
 
       // Fail CLOSED: every vault created by Lokr is signed at setup, so a
       // missing signature means vault_meta was tampered with or corrupted.
@@ -220,7 +221,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     const entries  = await db.vault_entries.orderBy('id').toArray()
     const notes    = await db.sticky_notes.orderBy('id').toArray()
-    const payload  = buildVaultPayload(meta.salt, entries, notes)
+    const pictures = await db.note_pictures.orderBy('id').toArray()
+    const payload  = await buildVaultPayloadWithPictures(meta.salt, entries, notes, pictures)
     const signature = await signVault(hKey, payload)
 
     await db.vault_meta.update(1, { hmacSignature: signature })

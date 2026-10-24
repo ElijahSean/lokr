@@ -63,6 +63,12 @@ export interface EncryptedData {
   iv: string          // Initialization vector (must be stored alongside ciphertext)
 }
 
+/** Binary AES-GCM output for picture attachments. IndexedDB stores these buffers directly. */
+export interface EncryptedBytes {
+  ciphertext: ArrayBuffer
+  iv: ArrayBuffer
+}
+
 // ─── Key Derivation ───────────────────────────────────────────────────────────
 
 /**
@@ -187,6 +193,23 @@ export async function encryptEntry(
   }
 }
 
+/** Encrypts bytes without base64 expansion, using a fresh 96-bit IV on every call. */
+export async function encryptBytes(
+  key: CryptoKey,
+  plaintext: Uint8Array,
+): Promise<EncryptedBytes> {
+  const iv = crypto.getRandomValues(new Uint8Array(IV_BYTE_LENGTH))
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
+    key,
+    plaintext.buffer.slice(
+      plaintext.byteOffset,
+      plaintext.byteOffset + plaintext.byteLength,
+    ) as ArrayBuffer,
+  )
+  return { ciphertext, iv: iv.buffer.slice(0) as ArrayBuffer }
+}
+
 // ─── Decryption ───────────────────────────────────────────────────────────────
 
 /**
@@ -216,6 +239,25 @@ export async function decryptEntry(
   )
 
   return new TextDecoder().decode(plaintextBuffer)  // UTF-8 bytes → String
+}
+
+/** Decrypts binary AES-GCM data; wrong keys or modified bytes/IVs reject. */
+export async function decryptBytes(
+  key: CryptoKey,
+  ciphertext: ArrayBuffer,
+  iv: ArrayBuffer,
+): Promise<Uint8Array> {
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    ciphertext,
+  )
+  return new Uint8Array(plaintext)
+}
+
+/** Compact authenticated-payload summary for large encrypted picture records. */
+export async function hashBytes(bytes: ArrayBuffer): Promise<string> {
+  return bufferToBase64(await crypto.subtle.digest('SHA-256', bytes))
 }
 
 // ─── HMAC Vault Integrity ─────────────────────────────────────────────────────

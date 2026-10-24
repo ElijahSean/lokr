@@ -8,6 +8,9 @@ import { describe, it, expect } from 'vitest'
 import {
   encryptEntry,
   decryptEntry,
+  encryptBytes,
+  decryptBytes,
+  hashBytes,
   signVault,
   verifyVault,
   bufferToBase64,
@@ -74,6 +77,38 @@ describe('encryptEntry / decryptEntry', () => {
     const key = await aesKey()
     const { ciphertext, iv } = await encryptEntry(key, 'secret')
     await expect(decryptEntry(key, ciphertext, flipBit(iv))).rejects.toThrow()
+  })
+})
+
+describe('encryptBytes / decryptBytes', () => {
+  it('round-trips arbitrary binary data without base64 storage', async () => {
+    const key = await aesKey()
+    const plaintext = Uint8Array.from({ length: 256 }, (_, index) => index)
+    const encrypted = await encryptBytes(key, plaintext)
+
+    expect(encrypted.ciphertext).toBeInstanceOf(ArrayBuffer)
+    expect(encrypted.iv).toBeInstanceOf(ArrayBuffer)
+    expect(encrypted.iv.byteLength).toBe(12)
+    expect(await decryptBytes(key, encrypted.ciphertext, encrypted.iv)).toEqual(plaintext)
+  })
+
+  it('uses a fresh IV and rejects modified bytes', async () => {
+    const key = await aesKey()
+    const plaintext = new TextEncoder().encode('picture bytes')
+    const first = await encryptBytes(key, plaintext)
+    const second = await encryptBytes(key, plaintext)
+    expect(bufferToBase64(first.iv)).not.toBe(bufferToBase64(second.iv))
+
+    const changed = first.ciphertext.slice(0)
+    new Uint8Array(changed)[0] ^= 0x01
+    await expect(decryptBytes(key, changed, first.iv)).rejects.toThrow()
+  })
+
+  it('hashes identical bytes deterministically and changed bytes differently', async () => {
+    const first = new Uint8Array([1, 2, 3]).buffer
+    const changed = new Uint8Array([1, 2, 4]).buffer
+    expect(await hashBytes(first)).toBe(await hashBytes(first.slice(0)))
+    expect(await hashBytes(first)).not.toBe(await hashBytes(changed))
   })
 })
 

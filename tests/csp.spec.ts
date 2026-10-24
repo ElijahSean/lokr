@@ -57,6 +57,7 @@ describe('content security policy', () => {
     const policy = buildContentSecurityPolicy(nonce, false)
 
     expect(directive(policy, 'object-src')).toEqual(["'none'"])
+    expect(directive(policy, 'img-src')).toEqual(["'self'", 'data:', 'blob:'])
     expect(directive(policy, 'frame-ancestors')).toEqual(["'none'"])
     expect(directive(policy, 'base-uri')).toEqual(["'self'"])
     expect(directive(policy, 'form-action')).toEqual(["'self'"])
