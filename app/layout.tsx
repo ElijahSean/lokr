@@ -14,6 +14,10 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { SessionProvider } from '@/hooks/useSession'
 
+// Task 4.2: a CSP nonce is fresh per request, so the App Router must render the
+// document per request rather than reusing HTML whose script nonces are stale.
+export const dynamic = 'force-dynamic'
+
 // Next.js uses this object to set <title> and <meta description> tags automatically
 export const metadata: Metadata = {
   title: 'Lokr — Your secrets, your machine.',
