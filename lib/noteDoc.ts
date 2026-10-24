@@ -20,11 +20,11 @@ export type NoteFontSize = typeof NOTE_FONT_SIZES[number]
 export const DEFAULT_NOTE_FONT_SIZE: NoteFontSize = 'normal'
 
 const INLINE_MARKS = ['bold', 'italic', 'underline', 'strike'] as const
-type NoteMarkType = typeof INLINE_MARKS[number]
+type NoteInlineMarkType = typeof INLINE_MARKS[number]
 
-export interface NoteDocMark {
-  type: NoteMarkType
-}
+export type NoteDocMark =
+  | { type: NoteInlineMarkType }
+  | { type: 'link'; attrs: { href: string } }
 
 /** Structurally compatible with Tiptap's JSONContent, without importing the editor into pure tests. */
 export interface NoteDocNode {
@@ -45,24 +45,38 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function markKey(marks: NoteDocMark[] | undefined): string {
-  return marks?.map(mark => mark.type).join('|') ?? ''
+  return marks?.map(mark => mark.type === 'link' ? `link:${mark.attrs.href}` : mark.type).join('|') ?? ''
 }
 
 function sanitizeMarks(value: unknown): NoteDocMark[] | undefined {
   if (!Array.isArray(value)) return undefined
-  const seen = new Set<NoteMarkType>()
+  const seen = new Set<NoteInlineMarkType>()
   const marks: NoteDocMark[] = []
   for (const candidate of value) {
     if (!isRecord(candidate) || typeof candidate.type !== 'string') continue
+    if (candidate.type === 'link' && isRecord(candidate.attrs) && isAllowedNoteUrl(candidate.attrs.href)) {
+      if (!marks.some(mark => mark.type === 'link')) {
+        marks.push({ type: 'link', attrs: { href: candidate.attrs.href } })
+      }
+      continue
+    }
     if (!(INLINE_MARKS as readonly string[]).includes(candidate.type)) continue
-    const type = candidate.type as NoteMarkType
+    const type = candidate.type as NoteInlineMarkType
     if (!seen.has(type)) {
       seen.add(type)
       marks.push({ type })
     }
   }
-  marks.sort((a, b) => INLINE_MARKS.indexOf(a.type) - INLINE_MARKS.indexOf(b.type))
+  marks.sort((a, b) => {
+    const aIndex = a.type === 'link' ? INLINE_MARKS.length : INLINE_MARKS.indexOf(a.type)
+    const bIndex = b.type === 'link' ? INLINE_MARKS.length : INLINE_MARKS.indexOf(b.type)
+    return aIndex - bIndex
+  })
   return marks.length > 0 ? marks : undefined
+}
+
+function linkHref(marks: NoteDocMark[] | undefined): string | null {
+  return marks?.find((mark): mark is Extract<NoteDocMark, { type: 'link' }> => mark.type === 'link')?.attrs.href ?? null
 }
 
 function pushText(target: NoteDocNode[], text: string, marks: NoteDocMark[] | undefined) {
@@ -80,10 +94,25 @@ function pushText(target: NoteDocNode[], text: string, marks: NoteDocMark[] | un
 function sanitizeInline(value: unknown): NoteDocNode[] {
   if (!Array.isArray(value)) return []
   const result: NoteDocNode[] = []
-  for (const candidate of value) {
+  for (let index = 0; index < value.length; index += 1) {
+    const candidate = value[index]
     if (!isRecord(candidate) || typeof candidate.type !== 'string') continue
     if (candidate.type === 'text' && typeof candidate.text === 'string') {
-      pushText(result, candidate.text, sanitizeMarks(candidate.marks))
+      const marks = sanitizeMarks(candidate.marks)
+      const href = linkHref(marks)
+      if (!href) {
+        pushText(result, candidate.text, marks)
+        continue
+      }
+
+      // A link may be split across several formatted text nodes. Collapse the
+      // complete run so its visible label can never conceal its destination.
+      while (index + 1 < value.length) {
+        const next = value[index + 1]
+        if (!isRecord(next) || next.type !== 'text' || linkHref(sanitizeMarks(next.marks)) !== href) break
+        index += 1
+      }
+      pushText(result, href, marks)
     } else if (candidate.type === 'hardBreak') {
       result.push({ type: 'hardBreak' })
     }
@@ -179,6 +208,39 @@ export function sanitizeNoteDocument(value: unknown): NoteDocument {
   }
   const content = value.content.map(sanitizeBlock).filter((node): node is NoteDocNode => node !== null)
   return { type: 'doc', content: content.length > 0 ? content : [{ type: 'paragraph' }] }
+}
+
+/** Lokr links are explicit web addresses only; validation never supplies a default scheme. */
+export function isAllowedNoteUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length === 0 || value !== value.trim()) return false
+  try {
+    const protocol = new URL(value).protocol.toLowerCase()
+    return protocol === 'http:' || protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+export interface NoteUrlRange {
+  href: string
+  from: number
+  to: number
+}
+
+const NOTE_URL_CANDIDATE = /https?:\/\/[^\s<>"']+/gi
+const NOTE_URL_TRAILING_PUNCTUATION = /[.,;:!?)}\]]+$/
+
+/** Find explicit web addresses while leaving sentence punctuation outside the link. */
+export function findAllowedNoteUrls(text: string): NoteUrlRange[] {
+  const ranges: NoteUrlRange[] = []
+  for (const match of text.matchAll(NOTE_URL_CANDIDATE)) {
+    const raw = match[0]
+    const href = raw.replace(NOTE_URL_TRAILING_PUNCTUATION, '')
+    if (!isAllowedNoteUrl(href)) continue
+    const from = match.index
+    ranges.push({ href, from, to: from + href.length })
+  }
+  return ranges
 }
 
 /** Convert a 2.1 plain body without losing blank lines or a trailing newline. */

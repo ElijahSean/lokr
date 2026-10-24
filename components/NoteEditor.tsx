@@ -12,11 +12,14 @@
 import { Extension, type Editor } from '@tiptap/core'
 import { TaskItem, TaskList } from '@tiptap/extension-list'
 import { TableKit } from '@tiptap/extension-table'
+import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin } from '@tiptap/pm/state'
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import {
   documentFitsEditorLimits,
+  findAllowedNoteUrls,
+  isAllowedNoteUrl,
   sanitizeNoteDocument,
   type NoteDocument,
   type NoteFontFamily,
@@ -36,22 +39,103 @@ const NoteLimits = Extension.create({
   },
 })
 
+function linkHref(node: ProseMirrorNode): string | null {
+  const href = node.marks.find(mark => mark.type.name === 'link')?.attrs.href
+  return isAllowedNoteUrl(href) ? href : null
+}
+
+function normalizePastedLinks(fragment: Fragment): Fragment {
+  const children: ProseMirrorNode[] = []
+  for (let index = 0; index < fragment.childCount; index += 1) {
+    const child = fragment.child(index)
+    if (child.isText) {
+      const href = linkHref(child)
+      if (href) {
+        while (index + 1 < fragment.childCount && linkHref(fragment.child(index + 1)) === href) index += 1
+        children.push(child.type.schema.text(href, child.marks))
+      } else {
+        const safeMarks = child.marks.filter(mark => mark.type.name !== 'link')
+        children.push(safeMarks.length === child.marks.length ? child : child.type.schema.text(child.text ?? '', safeMarks))
+      }
+      continue
+    }
+    children.push(child.content.size > 0 ? child.copy(normalizePastedLinks(child.content)) : child)
+  }
+  return Fragment.fromArray(children)
+}
+
+const NoteLinkPasteSafety = Extension.create({
+  name: 'lokrNoteLinkPasteSafety',
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      props: {
+        transformPasted(slice) {
+          return new Slice(normalizePastedLinks(slice.content), slice.openStart, slice.openEnd)
+        },
+      },
+    })]
+  },
+})
+
+const NoteWebAutolink = Extension.create({
+  name: 'lokrNoteWebAutolink',
+  addProseMirrorPlugins() {
+    const link = this.editor.schema.marks.link
+    return [new Plugin({
+      appendTransaction(transactions, oldState, newState) {
+        if (!transactions.some(transaction => transaction.docChanged) || oldState.doc.eq(newState.doc)) return null
+        const transaction = newState.tr
+        newState.doc.descendants((node, position) => {
+          if (!node.isText || !node.text || node.marks.some(mark => mark.type === link)) return
+          for (const range of findAllowedNoteUrls(node.text)) {
+            // Typing waits for the separating space. Pasted URLs are handled by
+            // the link extension's paste rule even when they end the document.
+            if (!/^[.,;:!?)}\]]*\s/.test(node.text.slice(range.to))) continue
+            transaction.addMark(position + range.from, position + range.to, link.create({ href: range.href }))
+          }
+        })
+        return transaction.steps.length > 0 ? transaction : null
+      },
+    })]
+  },
+})
+
 const NOTE_EXTENSIONS = [
   StarterKit.configure({
     blockquote: false,
     code: false,
     codeBlock: false,
     horizontalRule: false,
-    link: false,
+    link: {
+      autolink: false,
+      linkOnPaste: true,
+      markdownLinks: false,
+      openOnClick: false,
+      defaultProtocol: 'https',
+      protocols: [],
+      isAllowedUri: url => isAllowedNoteUrl(url),
+      shouldAutoLink: url => isAllowedNoteUrl(url),
+      HTMLAttributes: {
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        class: null,
+      },
+    },
     heading: { levels: [1, 2] },
   }),
   TaskList,
   TaskItem.configure({ nested: true }),
   TableKit.configure({ table: { resizable: false } }),
+  NoteLinkPasteSafety,
+  NoteWebAutolink,
   NoteLimits,
 ]
 
-export function useNoteEditor(initial: NoteDocument, onChange: (_document: NoteDocument) => void): Editor | null {
+export function useNoteEditor(
+  initial: NoteDocument,
+  onChange: (_document: NoteDocument) => void,
+  onOpenLink: (_href: string) => void,
+): Editor | null {
   return useEditor({
     extensions: NOTE_EXTENSIONS,
     content: initial,
@@ -62,6 +146,15 @@ export function useNoteEditor(initial: NoteDocument, onChange: (_document: NoteD
         'aria-multiline': 'true',
         'autocomplete': 'off',
         'spellcheck': 'false',
+      },
+      handleClick(_view, _position, event) {
+        const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null
+        const href = anchor?.getAttribute('href')
+        if (event.button !== 0 || !isAllowedNoteUrl(href)) return false
+        event.preventDefault()
+        if (!event.ctrlKey && !event.metaKey) return true
+        onOpenLink(href)
+        return true
       },
     },
     onUpdate: ({ editor }) => onChange(sanitizeNoteDocument(editor.getJSON())),
@@ -111,7 +204,7 @@ export function NoteEditorSurface({
     } ${tableTone}`}>
       <EditorContent
         editor={editor}
-        className="min-h-full [&_.tiptap]:min-h-full [&_.tiptap]:outline-none [&_.tiptap]:pb-10 [&_p]:min-h-[1.5em] [&_h1]:mb-2 [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-xl [&_h2]:font-semibold [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0 [&_li[data-type=taskItem]]:flex [&_li[data-type=taskItem]]:items-start [&_li[data-type=taskItem]]:gap-2 [&_li[data-type=taskItem]>label]:mt-1 [&_li[data-type=taskItem]>div]:min-w-0 [&_li[data-type=taskItem]>div]:flex-1 [&_table]:my-3 [&_table]:w-full [&_table]:border-collapse [&_table]:table-fixed [&_td]:border [&_td]:p-2 [&_td]:align-top [&_th]:border [&_th]:p-2 [&_th]:text-left [&_th]:font-semibold [&_.selectedCell]:bg-black/10 dark:[&_.selectedCell]:bg-white/15"
+        className="min-h-full [&_.tiptap]:min-h-full [&_.tiptap]:outline-none [&_.tiptap]:pb-10 [&_p]:min-h-[1.5em] [&_h1]:mb-2 [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-xl [&_h2]:font-semibold [&_a]:cursor-pointer [&_a]:underline [&_a]:decoration-2 [&_a]:underline-offset-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0 [&_li[data-type=taskItem]]:flex [&_li[data-type=taskItem]]:items-start [&_li[data-type=taskItem]]:gap-2 [&_li[data-type=taskItem]>label]:mt-1 [&_li[data-type=taskItem]>div]:min-w-0 [&_li[data-type=taskItem]>div]:flex-1 [&_table]:my-3 [&_table]:w-full [&_table]:border-collapse [&_table]:table-fixed [&_td]:border [&_td]:p-2 [&_td]:align-top [&_th]:border [&_th]:p-2 [&_th]:text-left [&_th]:font-semibold [&_.selectedCell]:bg-black/10 dark:[&_.selectedCell]:bg-white/15"
       />
     </div>
   )

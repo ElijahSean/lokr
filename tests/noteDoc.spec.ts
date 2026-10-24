@@ -4,6 +4,8 @@ import {
   assertDocumentTextLimit,
   documentToPlainText,
   documentFitsEditorLimits,
+  findAllowedNoteUrls,
+  isAllowedNoteUrl,
   plainTextToDocument,
   sanitizeNoteDocument,
   type NoteDocument,
@@ -40,7 +42,7 @@ describe('plain text conversion', () => {
 })
 
 describe('allowed document schema', () => {
-  it('keeps allowed nodes and marks while dropping links, styles, images and scripts', () => {
+  it('keeps allowed nodes and marks while dropping unsafe links, styles, images and scripts', () => {
     const sanitized = sanitizeNoteDocument({
       type: 'doc',
       content: [
@@ -62,6 +64,31 @@ describe('allowed document schema', () => {
     expect(sanitized).toEqual({
       type: 'doc',
       content: [{ type: 'paragraph', content: [{ type: 'text', text: 'safe', marks: [{ type: 'bold' }] }] }],
+    })
+  })
+
+  it('keeps web links, replaces a concealed label, and strips unsafe stored links', () => {
+    const sanitized = sanitizeNoteDocument({
+      type: 'doc',
+      content: [{
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'bank', marks: [{ type: 'link', attrs: { href: 'https://evil.example', target: '_self' } }] },
+          { type: 'text', text: '.com', marks: [{ type: 'bold' }, { type: 'link', attrs: { href: 'https://evil.example' } }] },
+          { type: 'text', text: ' unsafe', marks: [{ type: 'link', attrs: { href: 'javascript:alert(1)' } }] },
+        ],
+      }],
+    })
+
+    expect(sanitized).toEqual({
+      type: 'doc',
+      content: [{
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'https://evil.example', marks: [{ type: 'link', attrs: { href: 'https://evil.example' } }] },
+          { type: 'text', text: ' unsafe' },
+        ],
+      }],
     })
   })
 
@@ -90,5 +117,36 @@ describe('allowed document schema', () => {
       type: 'doc',
       content: Array.from({ length: 13_000 }, () => ({ type: 'paragraph' })),
     })).toBe(false)
+  })
+})
+
+describe('note URL validation', () => {
+  it.each([
+    'http://example.com',
+    'https://example.com/path?q=1',
+    'HTTPS://EXAMPLE.COM/path',
+  ])('allows an explicit web URL: %s', value => {
+    expect(isAllowedNoteUrl(value)).toBe(true)
+  })
+
+  it.each([
+    'javascript:alert(1)',
+    'data:text/html,<h1>x</h1>',
+    'file:///C:/secret.txt',
+    'mailto:x@example.com',
+    'tel:+15551212',
+    'www.example.com',
+    'example.com',
+    'https://',
+    ' https://example.com',
+  ])('refuses a non-web or malformed URL: %s', value => {
+    expect(isAllowedNoteUrl(value)).toBe(false)
+  })
+
+  it('finds explicit web URLs without their trailing sentence punctuation', () => {
+    expect(findAllowedNoteUrls('see https://example.com/path?q=1, then HTTPS://EXAMPLE.COM.')).toEqual([
+      { href: 'https://example.com/path?q=1', from: 4, to: 32 },
+      { href: 'HTTPS://EXAMPLE.COM', from: 39, to: 58 },
+    ])
   })
 })

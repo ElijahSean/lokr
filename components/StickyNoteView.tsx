@@ -28,6 +28,7 @@ import {
 } from '@/lib/notes'
 import { CloseIcon, DownloadIcon, LinesIcon, PinIcon, TrashIcon, WarningIcon } from '@/components/Icons'
 import { BRAND_FINISH, DANGER_OUTLINE, DANGER_OUTLINE_ON_DARK } from '@/components/ui'
+import { useSession } from '@/hooks/useSession'
 import {
   NOTE_FILE_NAME,
   NOTE_FILE_PASSWORD_MIN,
@@ -128,6 +129,7 @@ function sameContent(a: NoteContent, b: NoteContent): boolean {
 }
 
 export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClose }: StickyNoteViewProps) {
+  const { lock } = useSession()
   const [draft, setDraft]       = useState<NoteContent>(initial)
   const [saved, setSaved]       = useState<NoteContent>(initial)
   const [unsaved, setUnsaved]   = useState(isNew)  // a new note is unsaved until its first Save
@@ -144,7 +146,12 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
   const isDirty = unsaved || !sameContent(draft, saved)
   const classes = NOTE_CLASSES[draft.colour]
   const tone = TONE_CLASSES[classes.tone]
-  const editor = useNoteEditor(initial.body, body => update({ body }))
+  const editor = useNoteEditor(initial.body, body => update({ body }), href => {
+    window.open(href, '_blank', 'noopener,noreferrer')
+    // Task 2.7 exempts an open note from visibility locking, so link opening
+    // must clear the session keys itself even when the popup is blocked.
+    lock()
+  })
   const plainBody = documentToPlainText(draft.body)
 
   // Focus the title on open; the parent returns focus to the card on close.
@@ -471,9 +478,9 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
           linedClass={draft.fontSize === 'small' ? tone.linesTight : draft.fontSize === 'large' ? tone.linesLoose : tone.lines}
           lined={draft.lined}
         />
-        <div className={`flex items-center justify-between gap-4 pt-2 text-xs ${tone.faint}`}>
+        <div className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 pt-2 text-xs ${tone.faint}`}>
           {/* Task 2.7: switching tabs or minimising doesn't lock while a note is open */}
-          <p>Stays unlocked while open · locks after 5 min idle</p>
+          <p>Stays unlocked while open · locks after 5 min idle · Opening a link locks Lokr</p>
           <p>{plainBody.length.toLocaleString('en-US')} / {NOTE_BODY_MAX.toLocaleString('en-US')}</p>
         </div>
       </div>
