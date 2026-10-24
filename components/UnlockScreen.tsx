@@ -17,9 +17,9 @@
  *  Create: handleSetup() → setupVault(password) → router.replace('/vault')
  *  Unlock: handleUnlock() → unlock(password) → router.replace('/vault') or show error
  *
- * Look (task 3.6): the system light theme is matte white and the dark theme is
- * restrained glossy charcoal, both through swapping `shell` tokens. The form
- * logic above the JSX remains independent of presentation.
+ * Look (tasks 3.6, 3.7): light is matte white and dark is restrained glossy
+ * charcoal, both through swapping `shell` tokens selected by the persistent
+ * appearance setting. The form logic above the JSX remains independent.
  */
 
 'use client'
@@ -30,6 +30,7 @@ import { useSession } from '@/hooks/useSession'
 import { db } from '@/lib/db'
 import { scorePassword } from '@/lib/generator'
 import { LokrIcon } from '@/components/LokrLogo'
+import ThemeToggle from '@/components/ThemeToggle'
 import { InfoIcon, LockIcon } from '@/components/Icons'
 import {
   BRAND_FINISH,
@@ -165,7 +166,8 @@ export default function UnlockScreen() {
 
   if (isFirstTime === null) {
     return (
-      <div className={`min-h-screen flex items-center justify-center ${SHELL_SURFACE}`}>
+      <div className={`relative min-h-screen flex items-center justify-center ${SHELL_SURFACE}`}>
+        <ThemeToggle className="fixed right-4 top-4 z-20" />
         <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
       </div>
     )
@@ -174,7 +176,8 @@ export default function UnlockScreen() {
   if (lockedUntil && Date.now() < lockedUntil) {
     const minutesLeft = Math.max(1, Math.ceil((lockedUntil - Date.now()) / 60_000))
     return (
-      <div className={`min-h-screen flex items-center justify-center px-4 ${SHELL_SURFACE}`}>
+      <div className={`relative min-h-screen flex items-center justify-center px-4 ${SHELL_SURFACE}`}>
+        <ThemeToggle className="fixed right-4 top-4 z-20" />
         <div className={`rounded-3xl !border-danger/40 p-8 text-center max-w-md w-full ${SHELL_CARD_SURFACE}`}>
           <LockIcon className="w-10 h-10 mx-auto mb-4 text-danger" />
           <h1 className="text-shell-text font-semibold text-xl mb-2">Vault Locked Out</h1>
@@ -187,7 +190,8 @@ export default function UnlockScreen() {
   }
 
   return (
-    <div className={`min-h-screen flex items-center justify-center px-4 ${SHELL_SURFACE}`}>
+    <div className={`relative min-h-screen flex items-center justify-center px-4 ${SHELL_SURFACE}`}>
+      <ThemeToggle className="fixed right-4 top-4 z-20" />
       <div className="w-full max-w-md animate-fade-in">
         {/* Logo + branding; the italic serif is the site's "Faith in *Real Life*" accent */}
         <div className="text-center mb-8">

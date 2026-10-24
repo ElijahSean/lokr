@@ -127,7 +127,7 @@ describe('the SPACED-inspired palette (task 3.6)', () => {
     }
   })
 
-  it('keeps gloss and backdrop blur behind the dark media variant', () => {
+  it('keeps gloss and backdrop blur behind the explicit dark variant', () => {
     const sharedFinishes = readFileSync(new URL('../components/ui.ts', import.meta.url), 'utf8')
     const vaultDialog = readFileSync(new URL('../components/VaultList.tsx', import.meta.url), 'utf8')
     const materialTokens = sharedFinishes.match(/\S*(?:bg-gloss-|shadow-gloss)\S*/g) ?? []

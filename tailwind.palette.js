@@ -2,8 +2,8 @@
  * tailwind.palette.js — SPACED-inspired light and dark colours (task 3.6)
  *
  * The one place application theme hex values live. tailwind.config.js turns
- * each `light`/`dark` pair into CSS variables under prefers-color-scheme, so
- * the whole shell repaints without JavaScript or a stored preference.
+ * each `light`/`dark` pair into CSS variables selected by the root theme class,
+ * which app/layout.tsx renders from the persistent allowlisted preference.
  *
  * Published SPACED anchors from the reference supplied by Elijah:
  * #2D2E32 charcoal, #F4F4F4 matte white, #9F9FA0 mid grey,
@@ -49,7 +49,7 @@ module.exports = {
       grey:   { DEFAULT: '#E7E8EA', strip: '#DADBDD' },
       black:  { DEFAULT: '#2D2E32', strip: '#0F1013' },
     },
-    // The unlock screen, top bar and footer now follow the system theme too.
+    // The unlock screen, top bar and footer follow the selected theme too.
     shell: {
       DEFAULT: '#F4F4F4',
       surface: '#FFFFFF',
@@ -121,7 +121,7 @@ module.exports = {
       DEFAULT: '#368CDD', // SPACED blue
       strong:  '#256AA9', // accessible derived blue
     },
-    // Fixed dark-paper colours. Black notes use these in either system theme,
+    // Fixed dark-paper colours. Black notes use these in either app theme,
     // so they must not swap with the application shell.
     ink: {
       DEFAULT: '#0F1013',

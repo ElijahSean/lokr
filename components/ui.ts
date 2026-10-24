@@ -25,7 +25,7 @@ export const DANGER_OUTLINE_ON_DARK =
 
 // Task 3.6 material finishes. A light surface is a flat matte fill. The same
 // component gains its restrained gradient, highlight edge and shadow only under
-// the system dark media query; keeping the recipe here prevents screens drifting.
+// the explicit dark class; keeping the recipe here prevents screens drifting.
 export const CARD_SURFACE =
   'bg-slate-900 dark:bg-gloss-card dark:ring-1 dark:ring-inset dark:ring-slate-700 dark:shadow-gloss-sm'
 export const SHELL_SURFACE = 'bg-shell dark:bg-gloss-shell'

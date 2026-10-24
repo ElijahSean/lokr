@@ -11,8 +11,11 @@
  */
 
 import type { Metadata } from 'next'
+import { cookies } from 'next/headers'
 import './globals.css'
 import { SessionProvider } from '@/hooks/useSession'
+import { ThemeProvider } from '@/hooks/useTheme'
+import { parseTheme, THEME_COOKIE_NAME } from '@/lib/theme'
 
 // Task 4.2: a CSP nonce is fresh per request, so the App Router must render the
 // document per request rather than reusing HTML whose script nonces are stale.
@@ -34,31 +37,31 @@ export const metadata: Metadata = {
 /**
  * RootLayout wraps every page.
  *
- * SessionProvider must be here (not in individual pages) so that:
- *  - The session state persists during client-side navigation (no re-mount)
- *  - All components in the app tree can call useSession()
+ * Providers must be here (not in individual pages) so that:
+ *  - Theme and session state persist during client-side navigation
+ *  - All components in the app tree can call useTheme() and useSession()
  */
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const theme = parseTheme(cookies().get(THEME_COOKIE_NAME)?.value)
+
   return (
-    <html lang="en" suppressHydrationWarning>
-      {/*
-        suppressHydrationWarning on <html>: Tailwind sometimes adds classes during
-        SSR that differ from the client's first render (e.g. dark mode). This attr
-        tells React to skip the warning for the html/body elements only.
-      */}
+    <html
+      lang="en"
+      className={theme === 'dark' ? 'dark' : undefined}
+      style={{ colorScheme: theme }}
+    >
       <body className="min-h-screen bg-slate-950">
-        {/*
-          SessionProvider wraps the whole app so any component can call useSession().
-          It's a Client Component (see hooks/useSession.ts) even though layout.tsx is a Server Component.
-          Next.js allows Server Components to render Client Components as children.
-        */}
-        <SessionProvider>
-          {children}
-        </SessionProvider>
+        {/* The validated theme is already rendered on <html> before these client
+            provider boundaries hydrate. */}
+        <ThemeProvider initialTheme={theme}>
+          <SessionProvider>
+            {children}
+          </SessionProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

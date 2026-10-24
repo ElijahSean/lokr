@@ -73,6 +73,12 @@ Scans all your entries and flags:
 - Locks immediately when you **switch tabs** or minimize the browser, except while a note is open full-window; the 5-minute idle lock still applies there
 - Lock button always visible in the top-right corner
 
+### Appearance
+- Starts in **Dark mode** on a new browser profile
+- Use the sun/moon control in the top-right corner to switch between Dark and Light
+- The choice persists across reloads and browser restarts
+- Only the word `light` or `dark` is stored in a local preference cookie; no vault data is included
+
 ---
 
 ## Running Locally
@@ -179,6 +185,11 @@ Create a separate browser profile just for Lokr. This isolates it from extension
 1. Open Lokr from the Desktop shortcut, or browse to [http://localhost:3001](http://localhost:3001)
 2. Enter your master password and click **Unlock**
 3. After 3 wrong attempts there is a delay; after 10 the tab locks out permanently until closed
+
+### Changing Light or Dark Mode
+
+Use the sun/moon button in the top-right corner of the unlock screen or vault
+header. The change is immediate and remains selected the next time Lokr opens.
 
 ### Adding a Password Entry
 
@@ -304,6 +315,10 @@ Use this to wipe all data from the device (e.g. before lending the device).
 
 ### Storage note
 IndexedDB data is stored in your browser profile directory. If you use browser sync, disable syncing for `localhost` to prevent encrypted vault data from being uploaded to the browser's cloud.
+
+The separate `lokr-theme` cookie stores only `light` or `dark` so the correct
+appearance can be rendered before the page first appears. It contains no vault
+identifier, password, key, ciphertext, or account data.
 
 ---
 

@@ -11,8 +11,8 @@
  *    except while a sticky note is open full-window (task 2.7); useIdleLock
  *    re-checks the clock when the tab returns, so the 5-minute rule still holds
  *
- * Layout (task 3.6: a matte-white shell in the system light theme and a
- * restrained glossy-charcoal shell in dark mode):
+ * Layout (tasks 3.6, 3.7: a matte-white light shell and a restrained
+ * glossy-charcoal dark shell selected by the persistent appearance setting):
  *  ┌───────────────────────────────────────────────────────────┐
  *  │  Header: Lokr logo   [pill tabs]   [lock button]          │
  *  ├───────────────────────────────────────────────────────────┤
@@ -34,6 +34,7 @@ import HealthDashboard from '@/components/HealthDashboard'
 import ExportImport from '@/components/ExportImport'
 import StickyNotes from '@/components/StickyNotes'
 import { LokrIcon } from '@/components/LokrLogo'
+import ThemeToggle from '@/components/ThemeToggle'
 import { BackupIcon, GeneratorIcon, HealthIcon, LockIcon, NotesIcon, VaultIcon } from '@/components/Icons'
 import { BRAND_FINISH, SHELL_SURFACE } from '@/components/ui'
 
@@ -113,15 +114,18 @@ export default function VaultPage() {
             ))}
           </nav>
 
-          {/* Lock button — always visible */}
-          <button
-            onClick={lock}
-            title="Lock vault"
-            className="flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-shell-muted hover:text-shell-text hover:bg-shell-surface transition-colors"
-          >
-            <LockIcon className="w-4 h-4" />
-            <span className="hidden md:inline">Lock</span>
-          </button>
+          {/* Theme and Lock stay compact so the mobile header cannot overflow. */}
+          <div className="flex flex-shrink-0 items-center gap-1">
+            <ThemeToggle compact />
+            <button
+              onClick={lock}
+              title="Lock vault"
+              className="flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-shell-muted hover:text-shell-text hover:bg-shell-surface transition-colors"
+            >
+              <LockIcon className="w-4 h-4" />
+              <span className="hidden md:inline">Lock</span>
+            </button>
+          </div>
         </div>
 
         {/* Mobile tab bar — visible only on small screens. aria-current added in

@@ -4,8 +4,8 @@ const { light, dark, fixed } = require('./tailwind.palette.js')
 // Dark mode (task 3.1): every colour in the palette's `light`/`dark` pair becomes a
 // CSS variable, `--c-slate-100` and so on, holding "r g b" so Tailwind's opacity
 // modifiers still work. The plugin below writes the light values on :root and the
-// dark ones under prefers-color-scheme: dark, so the theme comes from CSS alone:
-// no flash on load, no stored preference, and a live system switch just repaints.
+// dark ones under the root `.dark` class. app/layout.tsx renders that class from
+// the validated theme cookie, so the chosen theme is correct before first paint.
 function hexToRgb(hex) {
   return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(' ')
 }
@@ -40,9 +40,8 @@ module.exports = {
     './components/**/*.{ts,tsx}',
     './hooks/**/*.{ts,tsx}',
   ],
-  // `dark:` follows the system setting, the same media query as the variables;
-  // used only for the few dark-only touches (hairlines, the notes' hovers and lines)
-  darkMode: 'media',
+  // `dark:` follows the explicit root class, alongside the variable swap below.
+  darkMode: 'class',
   theme: {
     extend: {
       // SPACED-inspired palette and material system (task 3.6). The source and
@@ -57,9 +56,9 @@ module.exports = {
         // existing component contract remains stable.
         brand: { ...fixed.brand, ...themed.classes.brand },
         accent: fixed.accent,
-        // Fixed dark-paper tokens: black notes use these in either system theme.
+        // Fixed dark-paper tokens: black notes use these in either app theme.
         ink: fixed.ink,
-        // The unlock screen, top bar and footer swap with the system theme. This
+        // The unlock screen, top bar and footer swap with the selected theme. This
         // keeps light mode fully matte and dark mode fully glossy (Elijah, 3.6).
         shell: themed.classes.shell,
         // Status colours (task 3.3): dots, meter bars, icons and thin edges only,
@@ -126,12 +125,12 @@ module.exports = {
     },
   },
   plugins: [
-    // The theme's variables, and `color-scheme` so native controls (scrollbars,
-    // the file input, autofill) follow the system too
+    // The theme's variables and native-control colour scheme follow the explicit
+    // root class rendered from the persistent user setting.
     plugin(({ addBase }) => {
       addBase({
-        ':root': { ...themed.vars, colorScheme: 'light dark' },
-        '@media (prefers-color-scheme: dark)': { ':root': darkVars },
+        ':root': { ...themed.vars, colorScheme: 'light' },
+        ':root.dark': { ...darkVars, colorScheme: 'dark' },
       })
     }),
   ],
