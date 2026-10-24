@@ -175,18 +175,26 @@ function Test-IconStructure {
       ) "ICO entry $index PNG signature"
     }
 
-    if ($width -eq 256) {
-      $pngBytes = New-Object byte[] $imageLength
-      [Array]::Copy($bytes, $imageOffset, $pngBytes, 0, $imageLength)
-      $pngStream = New-Object System.IO.MemoryStream(,$pngBytes)
-      $bitmap = New-Object System.Drawing.Bitmap($pngStream)
-      try {
-        Assert-True ($bitmap.GetPixel(0, 0).A -eq 0) 'ICO corner must be transparent'
-        Assert-True ($bitmap.GetPixel(128, 128).A -eq 255) 'ICO centre must be opaque'
-      } finally {
-        $bitmap.Dispose()
-        $pngStream.Dispose()
-      }
+    $pngBytes = New-Object byte[] $imageLength
+    [Array]::Copy($bytes, $imageOffset, $pngBytes, 0, $imageLength)
+    $pngStream = New-Object System.IO.MemoryStream(,$pngBytes)
+    $bitmap = New-Object System.Drawing.Bitmap($pngStream)
+    try {
+      $cornerAlphas = @(
+        $bitmap.GetPixel(0, 0).A,
+        $bitmap.GetPixel($width - 1, 0).A,
+        $bitmap.GetPixel(0, $height - 1).A,
+        $bitmap.GetPixel($width - 1, $height - 1).A
+      )
+      Assert-True (
+        ($cornerAlphas | Measure-Object -Maximum).Maximum -le 16
+      ) "ICO $width px corners must be transparent"
+      Assert-True (
+        $bitmap.GetPixel([int]($width / 2), [int]($height / 2)).A -eq 255
+      ) "ICO $width px centre must be opaque"
+    } finally {
+      $bitmap.Dispose()
+      $pngStream.Dispose()
     }
   }
 
@@ -212,12 +220,14 @@ try {
   Test-IconStructure -IconPath $iconPath
 
   $desktopPath = Join-Path $temporaryRoot 'Desktop With Spaces'
+  $installedIconDirectory = Join-Path $temporaryRoot 'Icon Cache With Spaces'
   $installOutput = & $powerShellPath `
     -NoProfile `
     -ExecutionPolicy Bypass `
     -File $installerPath `
     -ProjectRoot $projectRoot `
     -DesktopDirectory $desktopPath `
+    -IconDirectory $installedIconDirectory `
     -SkipBuild 2>&1 | Out-String
   Assert-True ($LASTEXITCODE -eq 0) "temporary install failed: $installOutput"
 
@@ -229,7 +239,14 @@ try {
   Assert-True ($shortcut.Arguments.Contains('-WindowStyle Hidden')) 'hidden argument'
   Assert-True ($shortcut.Arguments.Contains('"' + $launcherPath + '"')) 'quoted launcher path'
   Assert-True ($shortcut.WorkingDirectory -eq $projectRoot) 'shortcut working directory'
-  Assert-True ($shortcut.IconLocation -eq "$iconPath,0") 'shortcut icon'
+  $installedIcons = @(Get-ChildItem -LiteralPath $installedIconDirectory -Filter 'lokr-*.ico')
+  Assert-True ($installedIcons.Count -eq 1) 'one versioned icon was installed'
+  $installedIconPath = $installedIcons[0].FullName
+  Assert-True ($shortcut.IconLocation -eq "$installedIconPath,0") 'shortcut icon'
+  Assert-True (
+    (Get-FileHash -LiteralPath $installedIconPath -Algorithm SHA256).Hash -eq
+      (Get-FileHash -LiteralPath $iconPath -Algorithm SHA256).Hash
+  ) 'installed icon content'
   Assert-True ($shortcut.WindowStyle -eq 7) 'shortcut window style'
 
   & $powerShellPath `
@@ -238,10 +255,14 @@ try {
     -File $installerPath `
     -ProjectRoot $projectRoot `
     -DesktopDirectory $desktopPath `
+    -IconDirectory $installedIconDirectory `
     -SkipBuild | Out-Null
   Assert-True ($LASTEXITCODE -eq 0) 'second install failed'
   $shortcuts = @(Get-ChildItem -LiteralPath $desktopPath -Filter 'Lokr.lnk')
   Assert-True ($shortcuts.Count -eq 1) 'installer created duplicate shortcuts'
+  Assert-True (
+    @(Get-ChildItem -LiteralPath $installedIconDirectory -Filter 'lokr-*.ico').Count -eq 1
+  ) 'second install created a duplicate icon cache entry'
 
   $missingRoot = Join-Path $temporaryRoot 'Missing Build'
   [void](New-Item -ItemType Directory -Path $missingRoot)

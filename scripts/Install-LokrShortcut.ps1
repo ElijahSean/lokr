@@ -2,6 +2,7 @@
 param(
   [string]$ProjectRoot,
   [string]$DesktopDirectory,
+  [string]$IconDirectory,
   [switch]$SkipBuild
 )
 
@@ -73,6 +74,42 @@ if (-not (Test-Path -LiteralPath $buildIdPath -PathType Leaf)) {
   throw 'The production build is missing. The Desktop shortcut was not changed.'
 }
 
+$iconHash = (Get-FileHash -LiteralPath $iconPath -Algorithm SHA256).Hash.ToLowerInvariant()
+if ([string]::IsNullOrWhiteSpace($IconDirectory)) {
+  $localAppData = [Environment]::GetFolderPath(
+    [Environment+SpecialFolder]::LocalApplicationData
+  )
+  if ([string]::IsNullOrWhiteSpace($localAppData)) {
+    throw 'Windows did not provide a local application-data folder for the icon cache.'
+  }
+  $IconDirectory = Join-Path $localAppData 'Lokr\icons'
+} else {
+  $IconDirectory = [Environment]::ExpandEnvironmentVariables($IconDirectory)
+}
+if (-not (Test-Path -LiteralPath $IconDirectory -PathType Container)) {
+  [void](New-Item -ItemType Directory -Path $IconDirectory -Force)
+}
+$IconDirectory = (Resolve-Path -LiteralPath $IconDirectory).Path
+$installedIconPath = Join-Path $IconDirectory "lokr-$iconHash.ico"
+if (Test-Path -LiteralPath $installedIconPath -PathType Leaf) {
+  $installedHash = (
+    Get-FileHash -LiteralPath $installedIconPath -Algorithm SHA256
+  ).Hash.ToLowerInvariant()
+  if ($installedHash -ne $iconHash) {
+    throw "The cached Lokr icon failed its integrity check: $installedIconPath"
+  }
+} else {
+  $temporaryIconPath = Join-Path $IconDirectory ".lokr-$([Guid]::NewGuid().ToString('N')).ico"
+  try {
+    Copy-Item -LiteralPath $iconPath -Destination $temporaryIconPath
+    [System.IO.File]::Move($temporaryIconPath, $installedIconPath)
+  } finally {
+    if (Test-Path -LiteralPath $temporaryIconPath -PathType Leaf) {
+      Remove-Item -LiteralPath $temporaryIconPath -Force
+    }
+  }
+}
+
 $DesktopDirectory = Resolve-DesktopDirectory
 if (-not (Test-Path -LiteralPath $DesktopDirectory -PathType Container)) {
   [void](New-Item -ItemType Directory -Path $DesktopDirectory)
@@ -93,7 +130,9 @@ try {
     '-File "' + $launcherPath + '"'
   )
   $shortcut.WorkingDirectory = $ProjectRoot
-  $shortcut.IconLocation = "$iconPath,0"
+  # Explorer caches icons by path. The content hash gives each revision a new
+  # path so an updated transparent icon appears without clearing global caches.
+  $shortcut.IconLocation = "$installedIconPath,0"
   $shortcut.Description = 'Open Lokr on this computer'
   $shortcut.WindowStyle = 7
   $shortcut.Save()
@@ -123,3 +162,4 @@ try {
 }
 
 Write-Output "LOKR_SHORTCUT=$shortcutPath"
+Write-Output "LOKR_ICON=$installedIconPath"

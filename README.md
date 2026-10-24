@@ -103,7 +103,9 @@ pnpm shortcut:install
 ```
 
 This builds the production app first, then creates or refreshes **Lokr.lnk** on
-the current user's Desktop. The shortcut uses the committed Lokr icon.
+the current user's Desktop. The installer gives each revision of the committed
+Lokr icon a versioned local path so Windows does not keep showing an older cached
+image.
 
 To use it:
 
