@@ -48,6 +48,7 @@ img{display:block;width:${size}px;height:${size}px}
     & $ChromePath `
       '--headless=new' `
       '--disable-gpu' `
+      '--default-background-color=00000000' `
       '--hide-scrollbars' `
       '--no-first-run' `
       '--no-default-browser-check' `

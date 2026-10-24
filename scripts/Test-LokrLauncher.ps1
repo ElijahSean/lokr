@@ -3,6 +3,7 @@ param()
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+Add-Type -AssemblyName System.Drawing
 
 function Assert-True {
   param(
@@ -172,6 +173,20 @@ function Test-IconStructure {
       Assert-True (
         $bytes[$imageOffset + $byteIndex] -eq $pngSignature[$byteIndex]
       ) "ICO entry $index PNG signature"
+    }
+
+    if ($width -eq 256) {
+      $pngBytes = New-Object byte[] $imageLength
+      [Array]::Copy($bytes, $imageOffset, $pngBytes, 0, $imageLength)
+      $pngStream = New-Object System.IO.MemoryStream(,$pngBytes)
+      $bitmap = New-Object System.Drawing.Bitmap($pngStream)
+      try {
+        Assert-True ($bitmap.GetPixel(0, 0).A -eq 0) 'ICO corner must be transparent'
+        Assert-True ($bitmap.GetPixel(128, 128).A -eq 255) 'ICO centre must be opaque'
+      } finally {
+        $bitmap.Dispose()
+        $pngStream.Dispose()
+      }
     }
   }
 
