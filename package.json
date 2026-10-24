@@ -6,6 +6,9 @@
     "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start",
+    "icon:windows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Build-LokrIcon.ps1",
+    "shortcut:install": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Install-LokrShortcut.ps1",
+    "test:launcher": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Test-LokrLauncher.ps1",
     "lint": "next lint --dir app --dir components --dir hooks --dir lib --dir tests",
     "type-check": "tsc --noEmit",
     "test": "vitest run"

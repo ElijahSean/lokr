@@ -1,0 +1,125 @@
+[CmdletBinding()]
+param(
+  [string]$ProjectRoot,
+  [string]$DesktopDirectory,
+  [switch]$SkipBuild
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+function Resolve-DesktopDirectory {
+  if (-not [string]::IsNullOrWhiteSpace($DesktopDirectory)) {
+    return [Environment]::ExpandEnvironmentVariables($DesktopDirectory)
+  }
+
+  $candidate = [Environment]::GetFolderPath(
+    [Environment+SpecialFolder]::DesktopDirectory
+  )
+  if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+    return $candidate
+  }
+
+  try {
+    $shell = New-Object -ComObject WScript.Shell
+    $candidate = [string]$shell.SpecialFolders.Item('Desktop')
+    if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+      return $candidate
+    }
+  } catch {
+    # Some stripped-down Windows sessions expose the shell path only in HKCU.
+  }
+
+  $shellFolders = Get-ItemProperty -LiteralPath `
+    'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders'
+  $candidate = [Environment]::ExpandEnvironmentVariables([string]$shellFolders.Desktop)
+  if ([string]::IsNullOrWhiteSpace($candidate)) {
+    throw 'Windows did not provide a Desktop folder for the current user.'
+  }
+
+  return $candidate
+}
+
+if ([string]::IsNullOrWhiteSpace($ProjectRoot)) {
+  $ProjectRoot = Split-Path -Parent $PSScriptRoot
+}
+$ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
+
+$launcherPath = Join-Path $ProjectRoot 'scripts\Start-Lokr.ps1'
+$iconPath = Join-Path $ProjectRoot 'public\lokr.ico'
+if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) {
+  throw "The Lokr launcher is missing: $launcherPath"
+}
+if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf)) {
+  throw "The Windows icon is missing: $iconPath"
+}
+
+if (-not $SkipBuild) {
+  $pnpmCommand = Get-Command pnpm.cmd -CommandType Application -ErrorAction Stop |
+    Select-Object -First 1
+  Push-Location -LiteralPath $ProjectRoot
+  try {
+    & $pnpmCommand.Source build
+    if ($LASTEXITCODE -ne 0) {
+      throw "pnpm build failed with exit code $LASTEXITCODE. The Desktop shortcut was not changed."
+    }
+  } finally {
+    Pop-Location
+  }
+}
+
+$buildIdPath = Join-Path $ProjectRoot '.next\BUILD_ID'
+if (-not (Test-Path -LiteralPath $buildIdPath -PathType Leaf)) {
+  throw 'The production build is missing. The Desktop shortcut was not changed.'
+}
+
+$DesktopDirectory = Resolve-DesktopDirectory
+if (-not (Test-Path -LiteralPath $DesktopDirectory -PathType Container)) {
+  [void](New-Item -ItemType Directory -Path $DesktopDirectory)
+}
+$DesktopDirectory = (Resolve-Path -LiteralPath $DesktopDirectory).Path
+
+$powerShellPath = Join-Path $PSHOME 'powershell.exe'
+$shortcutPath = Join-Path $DesktopDirectory 'Lokr.lnk'
+$temporaryPath = Join-Path $DesktopDirectory ".Lokr-$([Guid]::NewGuid().ToString('N')).lnk"
+$backupPath = Join-Path $DesktopDirectory ".Lokr-backup-$([Guid]::NewGuid().ToString('N')).lnk"
+
+try {
+  $shell = New-Object -ComObject WScript.Shell
+  $shortcut = $shell.CreateShortcut($temporaryPath)
+  $shortcut.TargetPath = $powerShellPath
+  $shortcut.Arguments = (
+    '-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden ' +
+    '-File "' + $launcherPath + '"'
+  )
+  $shortcut.WorkingDirectory = $ProjectRoot
+  $shortcut.IconLocation = "$iconPath,0"
+  $shortcut.Description = 'Open Lokr on this computer'
+  $shortcut.WindowStyle = 7
+  $shortcut.Save()
+
+  if (-not (Test-Path -LiteralPath $temporaryPath -PathType Leaf)) {
+    throw 'Windows did not create the temporary Lokr shortcut.'
+  }
+
+  if (Test-Path -LiteralPath $shortcutPath -PathType Leaf) {
+    try {
+      [System.IO.File]::Replace($temporaryPath, $shortcutPath, $backupPath, $true)
+      Remove-Item -LiteralPath $backupPath -Force
+    } catch {
+      if (Test-Path -LiteralPath $backupPath -PathType Leaf) {
+        Copy-Item -LiteralPath $backupPath -Destination $shortcutPath -Force
+        Remove-Item -LiteralPath $backupPath -Force
+      }
+      throw
+    }
+  } else {
+    [System.IO.File]::Move($temporaryPath, $shortcutPath)
+  }
+} finally {
+  if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
+    Remove-Item -LiteralPath $temporaryPath -Force
+  }
+}
+
+Write-Output "LOKR_SHORTCUT=$shortcutPath"
