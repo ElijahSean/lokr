@@ -62,6 +62,11 @@ Scans all your entries and flags:
 - **Full Reset** — wipe all vault data from this device (requires typing `RESET`)
 - Reminder banner if no backup in 7+ days
 
+### Note Files
+- **Export one note** — creates `lokr-note.lokrnote`, encrypted with a separate 12+ character file password
+- **Import a note** — accepts `.lokrnote`, UTF-8 `.txt`, and raw-text `.md` files up to 100 KB
+- Individual note files never use or reveal the vault master password
+
 ### Auto-Lock
 - Locks after **5 minutes** of inactivity
 - Locks immediately when you **switch tabs** or minimize the browser
@@ -215,6 +220,14 @@ Use these only for migration or a plaintext copy you will secure immediately.
 4. Download `lokr-export.csv` for credentials and/or `lokr-notes-export.csv` for notes
 5. Import the credential CSV into your new password manager; note bodies are plain text in the notes CSV
 6. **Delete the CSV files immediately after use**
+
+### Moving One Note
+
+1. Open a note and click **Export note**
+2. Type a new file password of at least 12 characters twice, then download `lokr-note.lokrnote`
+3. In another vault, open the **Notes** tab and click **Import**
+4. Select the `.lokrnote` and enter its file password
+5. You can also import UTF-8 `.txt` or `.md` files; Markdown stays as raw text rather than being formatted
 
 ### Full Reset
 

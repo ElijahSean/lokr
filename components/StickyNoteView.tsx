@@ -26,8 +26,14 @@ import {
   type NoteColour,
   type NoteContent,
 } from '@/lib/notes'
-import { CloseIcon, LinesIcon, PinIcon, TrashIcon, WarningIcon } from '@/components/Icons'
+import { CloseIcon, DownloadIcon, LinesIcon, PinIcon, TrashIcon, WarningIcon } from '@/components/Icons'
 import { BRAND_FINISH, DANGER_OUTLINE, DANGER_OUTLINE_ON_DARK } from '@/components/ui'
+import {
+  NOTE_FILE_NAME,
+  NOTE_FILE_PASSWORD_MIN,
+  createNoteFile,
+  validateNoteFilePasswords,
+} from '@/lib/noteFile'
 import {
   NOTE_FONT_FAMILIES,
   NOTE_FONT_SIZES,
@@ -113,7 +119,7 @@ interface StickyNoteViewProps {
   onClose: () => void
 }
 
-type Confirm = 'none' | 'discard' | 'delete'
+type Confirm = 'none' | 'discard' | 'delete' | 'export'
 
 function sameContent(a: NoteContent, b: NoteContent): boolean {
   return a.title === b.title && JSON.stringify(a.body) === JSON.stringify(b.body) &&
@@ -127,7 +133,11 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
   const [unsaved, setUnsaved]   = useState(isNew)  // a new note is unsaved until its first Save
   const [confirm, setConfirm]   = useState<Confirm>('none')
   const [isSaving, setIsSaving] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
+  const [justExported, setJustExported] = useState(false)
+  const [filePassword, setFilePassword] = useState('')
+  const [filePasswordAgain, setFilePasswordAgain] = useState('')
   const [error, setError]       = useState<string | null>(null)
   const titleRef                = useRef<HTMLInputElement>(null)
 
@@ -146,20 +156,23 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
     function handleKey(e: KeyboardEvent) {
       if (e.key !== 'Escape') return
       e.preventDefault()
+      if (isExporting) return
       if (confirm !== 'none') setConfirm('none')
       else if (isDirty) setConfirm('discard')
       else onClose()
     }
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
-  }, [confirm, isDirty, onClose])
+  }, [confirm, isDirty, isExporting, onClose])
 
   function update(patch: Partial<NoteContent>) {
     setDraft(d => ({ ...d, ...patch }))
     setJustSaved(false)
+    setJustExported(false)
   }
 
   function requestClose() {
+    if (isExporting) return
     if (isDirty) setConfirm('discard')
     else onClose()
   }
@@ -178,6 +191,36 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
     setJustSaved(true)
   }
 
+  async function handleExport() {
+    const passwordError = validateNoteFilePasswords(filePassword, filePasswordAgain)
+    if (passwordError) {
+      setError(passwordError)
+      return
+    }
+
+    setIsExporting(true)
+    setError(null)
+    try {
+      const content = await createNoteFile(draft, filePassword)
+      const blob = new Blob([content], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = NOTE_FILE_NAME
+      link.click()
+      URL.revokeObjectURL(url)
+      setFilePassword('')
+      setFilePasswordAgain('')
+      setConfirm('none')
+      setJustSaved(false)
+      setJustExported(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not export the note.')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   const pill = 'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors'
   const row = 'mx-auto flex w-full max-w-4xl items-center gap-2 px-4 sm:px-6'
 
@@ -192,7 +235,7 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
       <div className={`border-b ${tone.divider}`}>
         {/* Fixed height: the bar doesn't shrink when a confirm hides the buttons on the right */}
         <div className={`${row} h-14`}>
-          <button type="button" onClick={requestClose} className={`${pill} -ml-2 ${tone.secondary} ${tone.hover}`}>
+          <button type="button" onClick={requestClose} disabled={isExporting} className={`${pill} -ml-2 ${tone.secondary} ${tone.hover} disabled:opacity-50`}>
             <CloseIcon />
             Close
           </button>
@@ -203,6 +246,7 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
           {confirm === 'none' && (
             <>
               {justSaved && !isDirty && <span className={`text-sm ${tone.muted}`}>Saved</span>}
+              {justExported && <span className={`text-sm ${tone.muted}`}>Exported</span>}
               {!isNew && (
                 <button
                   type="button"
@@ -273,6 +317,19 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
                 Lined
               </button>
 
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null)
+                  setJustExported(false)
+                  setConfirm('export')
+                }}
+                className={`${pill} ${tone.text} ${tone.hover}`}
+              >
+                <DownloadIcon />
+                Export note
+              </button>
+
               <label className="sr-only" htmlFor="note-font-family">Font family</label>
               <select
                 id="note-font-family"
@@ -331,6 +388,52 @@ export default function StickyNoteView({ initial, isNew, onSave, onDelete, onClo
               </button>
               <button type="button" onClick={() => setConfirm('none')} className={`${pill} ${tone.secondary} ${tone.hover}`}>
                 No
+              </button>
+            </div>
+          )}
+
+          {confirm === 'export' && (
+            <div className="flex w-full flex-wrap items-end gap-2">
+              <label className={`min-w-[12rem] flex-1 text-xs ${tone.text}`}>
+                File password
+                <input
+                  type="password"
+                  value={filePassword}
+                  onChange={event => setFilePassword(event.target.value)}
+                  minLength={NOTE_FILE_PASSWORD_MIN}
+                  autoComplete="off"
+                  disabled={isExporting}
+                  className={`mt-1 w-full rounded-xl border border-current bg-transparent px-3 py-2 text-sm ${tone.text} ${tone.placeholder} focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50`}
+                />
+              </label>
+              <label className={`min-w-[12rem] flex-1 text-xs ${tone.text}`}>
+                Type it again
+                <input
+                  type="password"
+                  value={filePasswordAgain}
+                  onChange={event => setFilePasswordAgain(event.target.value)}
+                  minLength={NOTE_FILE_PASSWORD_MIN}
+                  autoComplete="off"
+                  disabled={isExporting}
+                  className={`mt-1 w-full rounded-xl border border-current bg-transparent px-3 py-2 text-sm ${tone.text} ${tone.placeholder} focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50`}
+                />
+              </label>
+              <button type="button" onClick={() => void handleExport()} disabled={isExporting} className={`${pill} ${tone.save} disabled:opacity-50`}>
+                <DownloadIcon />
+                {isExporting ? 'Encrypting…' : 'Download'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirm('none')
+                  setFilePassword('')
+                  setFilePasswordAgain('')
+                  setError(null)
+                }}
+                disabled={isExporting}
+                className={`${pill} ${tone.secondary} ${tone.hover} disabled:opacity-50`}
+              >
+                Cancel
               </button>
             </div>
           )}

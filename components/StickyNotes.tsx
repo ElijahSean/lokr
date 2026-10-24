@@ -32,8 +32,15 @@ import {
 } from '@/lib/notes'
 import StickyNoteView, { NOTE_CLASSES, TONE_CLASSES, type NoteTone } from './StickyNoteView'
 import { DEFAULT_NOTE_FONT_FAMILY, DEFAULT_NOTE_FONT_SIZE, documentToPlainText, plainTextToDocument } from '@/lib/noteDoc'
-import { GridIcon, ListIcon, NotesIcon, PinIcon, PlusIcon, SearchIcon, WarningIcon } from '@/components/Icons'
-import { CARD_SURFACE, ERROR_BANNER, PRIMARY_BUTTON, SEGMENT, SEGMENTED, SEGMENT_OFF, SEGMENT_ON } from '@/components/ui'
+import { CheckIcon, GridIcon, ListIcon, NotesIcon, PinIcon, PlusIcon, SearchIcon, UploadIcon, WarningIcon } from '@/components/Icons'
+import { CARD_SURFACE, ERROR_BANNER, INPUT, PRIMARY_BUTTON, QUIET_BUTTON, SEGMENT, SEGMENTED, SEGMENT_OFF, SEGMENT_ON } from '@/components/ui'
+import {
+  NOTE_IMPORT_ACCEPT,
+  assertFileSize,
+  noteFromTextFile,
+  noteImportKind,
+  openNoteFile,
+} from '@/lib/noteFile'
 
 interface LoadedNote {
   id: number
@@ -76,10 +83,15 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
   const [openNote, setOpenNote]       = useState<OpenNote | null>(null)
   const [error, setError]             = useState<string | null>(null)
   const [view, setView]               = useState<NotesView>('grid')
+  const [pendingImport, setPendingImport] = useState<File | null>(null)
+  const [importPassword, setImportPassword] = useState('')
+  const [isImporting, setIsImporting] = useState(false)
+  const [importSuccess, setImportSuccess] = useState(false)
 
   // Focus goes back to the card that was opened (or the New note button) on close
   const cardRefs     = useRef(new Map<number, HTMLButtonElement>())
   const newButtonRef = useRef<HTMLButtonElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [returnFocusTo, setReturnFocusTo] = useState<number | 'new' | null>(null)
   const openCount = useRef(0)
 
@@ -173,6 +185,54 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
     }
   }
 
+  async function handleImportSelection(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    setError(null)
+    setImportSuccess(false)
+    setPendingImport(null)
+    setImportPassword('')
+    try {
+      const kind = noteImportKind(file.name)
+      assertFileSize(file.size)
+      if (kind === 'lokrnote') {
+        setPendingImport(file)
+        return
+      }
+
+      setIsImporting(true)
+      const content = noteFromTextFile(file.name, new Uint8Array(await file.arrayBuffer()))
+      await persist(null, content)
+      setImportSuccess(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not import the note.')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  async function handleEncryptedImport() {
+    if (!pendingImport || !importPassword) return
+    setIsImporting(true)
+    setError(null)
+    setImportSuccess(false)
+    try {
+      // The file-derived key only decrypts in memory; persist() re-encrypts the
+      // validated note under this vault's key and re-signs the whole vault.
+      const content = await openNoteFile(await pendingImport.text(), importPassword)
+      await persist(null, content)
+      setPendingImport(null)
+      setImportPassword('')
+      setImportSuccess(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not import the note.')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
   function openExisting(note: LoadedNote) {
     if (!note.content) return
     openView(note.id, note.content)
@@ -194,8 +254,8 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
     <>
     <div className="space-y-4">
       {/* Toolbar, as on the Vault tab (3.3) */}
-      <div className="flex gap-3">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap gap-3">
+        <div className="relative min-w-[12rem] flex-1">
           <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input
             type="search"
@@ -207,6 +267,22 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
             className="w-full rounded-full border border-slate-700 bg-slate-950 py-2.5 pl-11 pr-4 text-sm text-primary placeholder-slate-500 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
         </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={NOTE_IMPORT_ACCEPT}
+          onChange={event => void handleImportSelection(event)}
+          className="hidden"
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isImporting}
+          className={`${QUIET_BUTTON} whitespace-nowrap disabled:opacity-50`}
+        >
+          <UploadIcon />
+          {isImporting && !pendingImport ? 'Importing…' : 'Import'}
+        </button>
         <button
           ref={newButtonRef}
           onClick={() => openView(null, NEW_NOTE)}
@@ -221,6 +297,52 @@ export default function StickyNotes({ onNoteOpenChange }: StickyNotesProps) {
         <div className={ERROR_BANNER} role="alert">
           <WarningIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-danger" />
           <span>{error}</span>
+        </div>
+      )}
+
+      {importSuccess && (
+        <p className="flex items-center gap-2 px-1 text-sm text-primary" role="status">
+          <CheckIcon className="h-4 w-4 text-success" />
+          Note imported.
+        </p>
+      )}
+
+      {pendingImport && (
+        <div className={`rounded-3xl p-5 ${CARD_SURFACE}`}>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="min-w-[14rem] flex-1 text-sm text-primary">
+              Password for {pendingImport.name}
+              <input
+                type="password"
+                value={importPassword}
+                onChange={event => setImportPassword(event.target.value)}
+                autoComplete="off"
+                disabled={isImporting}
+                className={`${INPUT} mt-1.5`}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void handleEncryptedImport()}
+              disabled={!importPassword || isImporting}
+              className={PRIMARY_BUTTON}
+            >
+              <UploadIcon />
+              {isImporting ? 'Decrypting…' : 'Import note'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPendingImport(null)
+                setImportPassword('')
+                setError(null)
+              }}
+              disabled={isImporting}
+              className={`${QUIET_BUTTON} disabled:opacity-50`}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 
