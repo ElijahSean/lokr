@@ -10,6 +10,7 @@ A local password manager that runs entirely in your browser. No accounts. No clo
 
 - [Features](#features)
 - [Running Locally](#running-locally)
+- [Windows Desktop Shortcut](#windows-desktop-shortcut)
 - [How to Use](#how-to-use)
 - [Backup & Recovery](#backup--recovery)
 - [Security Notes](#security-notes)
@@ -69,7 +70,7 @@ Scans all your entries and flags:
 
 ### Auto-Lock
 - Locks after **5 minutes** of inactivity
-- Locks immediately when you **switch tabs** or minimize the browser
+- Locks immediately when you **switch tabs** or minimize the browser, except while a note is open full-window; the 5-minute idle lock still applies there
 - Lock button always visible in the top-right corner
 
 ---
@@ -83,7 +84,7 @@ Scans all your entries and flags:
 | Node.js | v18 or later | [nodejs.org](https://nodejs.org/) |
 | pnpm | any | `npm install -g pnpm` |
 
-### Step 1 — Install dependencies
+### Install dependencies
 
 ```bash
 cd lokr
@@ -92,18 +93,57 @@ pnpm install
 
 This installs Next.js, React, Dexie.js, argon2-browser, TypeScript, Tailwind CSS, and ESLint.
 
-### Step 2 — Start the development server
+## Windows Desktop Shortcut
+
+The recommended way to run Lokr on Windows is its Desktop shortcut. From
+PowerShell in the Lokr repository, run:
+
+```bash
+pnpm shortcut:install
+```
+
+This builds the production app first, then creates or refreshes **Lokr.lnk** on
+the current user's Desktop. The shortcut uses the committed Lokr icon.
+
+To use it:
+
+1. Double-click **Lokr** on the Desktop.
+2. The shortcut starts Lokr silently on `127.0.0.1:3001` if it is not already running.
+3. It waits for Lokr to become ready, then opens [http://localhost:3001](http://localhost:3001) in the default browser.
+4. Double-clicking it again reuses the existing Lokr server instead of starting another one.
+
+After pulling updates or changing source code, run `pnpm shortcut:install` again.
+The existing shortcut is replaced only after the new production build succeeds.
+
+The hidden server remains available for later launches until its Node process
+ends or you sign out of Windows. Deleting **Lokr.lnk** removes only the shortcut;
+it does not remove the repository or browser vault data.
+
+### Shortcut troubleshooting
+
+- **Missing production build:** run `pnpm shortcut:install` again.
+- **Port 3001 is already in use:** close the unrelated application using that port, then launch Lokr again. The launcher will not reuse a server unless its response identifies it as Lokr.
+- **The repository was moved:** rerun `pnpm shortcut:install` from its new location so the shortcut paths are refreshed.
+- **The shortcut does not appear on the Desktop:** run the installer from a normal PowerShell window for the same Windows account that will use Lokr.
+
+### Development mode
+
+For live reloading while changing the source code, run:
 
 ```bash
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:3001](http://localhost:3001) in your browser. Stop the
+development server with `Ctrl+C` in its terminal.
 
 ### Other commands
 
 ```bash
 pnpm build        # Production build (type-check + bundle)
+pnpm shortcut:install # Build and create/refresh the Windows Desktop shortcut
+pnpm test:launcher    # Test the launcher and shortcut in isolation
+pnpm icon:windows     # Regenerate the Windows icon from public/logo.svg
 pnpm lint         # Run ESLint
 pnpm type-check   # TypeScript check without building
 pnpm test         # Unit tests for lib/ (Vitest, specs in tests/)
@@ -119,7 +159,7 @@ Create a separate browser profile just for Lokr. This isolates it from extension
 
 ### Creating Your Vault (First Time)
 
-1. Open [http://localhost:3000](http://localhost:3000)
+1. Open Lokr from the Desktop shortcut, or browse to [http://localhost:3001](http://localhost:3001)
 2. The **Create Your Vault** form appears
 3. Type a strong master password — the strength meter gives live feedback
 4. Confirm the password
@@ -130,7 +170,7 @@ Create a separate browser profile just for Lokr. This isolates it from extension
 
 ### Unlocking
 
-1. Open [http://localhost:3000](http://localhost:3000)
+1. Open Lokr from the Desktop shortcut, or browse to [http://localhost:3001](http://localhost:3001)
 2. Enter your master password and click **Unlock**
 3. After 3 wrong attempts there is a delay; after 10 the tab locks out permanently until closed
 
