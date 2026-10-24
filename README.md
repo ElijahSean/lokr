@@ -117,11 +117,26 @@ To use it:
 
 1. Double-click **Lokr** on the Desktop.
 2. The shortcut starts Lokr silently on `127.0.0.1:3001` if it is not already running.
-3. It waits for Lokr to become ready, then opens [http://localhost:3001](http://localhost:3001) in your normal Google Chrome profile.
+3. It waits for Lokr to become ready, then opens [http://localhost:3001](http://localhost:3001) in a dedicated Google Chrome profile stored at `%LOCALAPPDATA%\Lokr\ChromeProfile`.
 4. Double-clicking it again reuses the existing Lokr server instead of starting another one.
 
-The shortcut does not change the Windows default browser and does not create a
-separate Chrome profile. Chrome must already be installed.
+The shortcut does not change the Windows default browser or modify your normal
+Chrome profile. Chrome must already be installed. The dedicated profile persists,
+so its Lokr vault and appearance setting remain available on later launches.
+
+### Moving an existing vault into the dedicated profile
+
+Chrome keeps IndexedDB data separate by profile, so an existing normal-profile
+vault does not appear automatically. Transfer it through Lokr's authenticated,
+encrypted backup format—never by copying Chrome profile or database files:
+
+1. Open normal Chrome manually, visit [http://localhost:3001](http://localhost:3001), unlock the existing vault, and use **Backup → Download encrypted backup**.
+2. Open the Desktop shortcut. On the dedicated profile's first launch, create an empty temporary vault so you can reach the **Backup** tab.
+3. Choose **Restore from `.vault`**, select the downloaded backup, and enter the original vault's master password. Restore fully replaces the temporary vault.
+4. Verify the entries, notes and attachments, then lock and unlock once with the original master password before removing any old data.
+
+The old normal-profile vault is not changed or deleted by installing or launching
+the shortcut. Keep the encrypted backup until the restored vault is verified.
 
 After pulling updates or changing source code, run `pnpm shortcut:install` again.
 The existing shortcut is replaced only after the new production build succeeds.

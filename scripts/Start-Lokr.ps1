@@ -9,6 +9,7 @@ param(
   [int]$StartupTimeoutSeconds = 30,
 
   [string]$ChromePath,
+  [string]$ChromeUserDataDirectory,
 
   [switch]$NoBrowser,
   [switch]$NoDialogs
@@ -165,6 +166,33 @@ function Resolve-ChromeExecutable {
   throw 'Google Chrome was not found. Install Chrome, then launch Lokr again.'
 }
 
+function Resolve-ChromeUserDataDirectory {
+  param([string]$RequestedPath)
+
+  if ([string]::IsNullOrWhiteSpace($RequestedPath)) {
+    $localAppData = [Environment]::GetFolderPath(
+      [Environment+SpecialFolder]::LocalApplicationData
+    )
+    if ([string]::IsNullOrWhiteSpace($localAppData)) {
+      throw 'Windows did not provide a local application-data folder for the dedicated Chrome profile.'
+    }
+    $RequestedPath = Join-Path $localAppData 'Lokr\ChromeProfile'
+  } else {
+    $RequestedPath = [Environment]::ExpandEnvironmentVariables($RequestedPath)
+  }
+
+  $fullPath = [System.IO.Path]::GetFullPath($RequestedPath)
+  if (Test-Path -LiteralPath $fullPath) {
+    if (-not (Test-Path -LiteralPath $fullPath -PathType Container)) {
+      throw "The dedicated Chrome profile path is not a directory: $fullPath"
+    }
+  } else {
+    [void](New-Item -ItemType Directory -Path $fullPath -Force)
+  }
+
+  return (Resolve-Path -LiteralPath $fullPath).Path
+}
+
 $mutex = $null
 $ownsMutex = $false
 $exitCode = 0
@@ -200,8 +228,11 @@ try {
   }
 
   $chromeExecutable = $null
+  $chromeProfileDirectory = $null
   if (-not $NoBrowser) {
     $chromeExecutable = Resolve-ChromeExecutable -RequestedPath $ChromePath
+    $chromeProfileDirectory = Resolve-ChromeUserDataDirectory `
+      -RequestedPath $ChromeUserDataDirectory
   }
 
   $url = "http://localhost:$Port"
@@ -296,12 +327,20 @@ try {
   }
 
   if (-not $NoBrowser) {
-    Start-Process -FilePath $chromeExecutable -ArgumentList @($url)
+    Start-Process -FilePath $chromeExecutable -ArgumentList @(
+      (Quote-ProcessArgument -Value ("--user-data-dir=$chromeProfileDirectory")),
+      '--no-first-run',
+      '--no-default-browser-check',
+      $url
+    )
   }
 
   Write-Output "LOKR_STATUS=$status"
   Write-Output "LOKR_SERVER_PID=$serverProcessId"
   Write-Output "LOKR_URL=$url"
+  if (-not $NoBrowser) {
+    Write-Output "LOKR_CHROME_PROFILE=$chromeProfileDirectory"
+  }
 } catch {
   $exitCode = 1
   $message = $_.Exception.Message

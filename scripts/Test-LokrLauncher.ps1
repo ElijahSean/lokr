@@ -83,6 +83,7 @@ function Invoke-Launcher {
     [int]$Port,
     [int]$TimeoutSeconds = 15,
     [string]$ChromePath,
+    [string]$ChromeUserDataDirectory,
     [switch]$OpenBrowser
   )
 
@@ -105,6 +106,9 @@ function Invoke-Launcher {
   }
   if (-not [string]::IsNullOrWhiteSpace($ChromePath)) {
     $launcherArguments += @('-ChromePath', $ChromePath)
+  }
+  if (-not [string]::IsNullOrWhiteSpace($ChromeUserDataDirectory)) {
+    $launcherArguments += @('-ChromeUserDataDirectory', $ChromeUserDataDirectory)
   }
 
   $previousErrorAction = $ErrorActionPreference
@@ -349,6 +353,7 @@ try {
 
   $chromeInvocationPath = Join-Path $temporaryRoot 'chrome-invocation.txt'
   $chromeStubPath = Join-Path $temporaryRoot 'Chrome Stub.cmd'
+  $chromeProfilePath = Join-Path $temporaryRoot 'Dedicated Chrome Profile'
   Set-Content -LiteralPath $chromeStubPath -Encoding ASCII -Value @(
     '@echo off',
     ('echo %*>"' + $chromeInvocationPath + '"')
@@ -359,6 +364,7 @@ try {
     -ProjectRoot $projectRoot `
     -Port $startPort `
     -ChromePath $chromeStubPath `
+    -ChromeUserDataDirectory $chromeProfilePath `
     -OpenBrowser
   Assert-True ($browserResult.ExitCode -eq 0) "Chrome launch failed: $($browserResult.Output)"
   $chromeDeadline = [DateTime]::UtcNow.AddSeconds(5)
@@ -367,10 +373,48 @@ try {
     Start-Sleep -Milliseconds 50
   }
   Assert-True (Test-Path -LiteralPath $chromeInvocationPath -PathType Leaf) 'Chrome was not launched'
+  Assert-True (Test-Path -LiteralPath $chromeProfilePath -PathType Container) 'dedicated profile was not created'
   $chromeArguments = (Get-Content -LiteralPath $chromeInvocationPath -Raw).Trim()
-  Assert-True ($chromeArguments -eq "http://localhost:$startPort") (
-    "Chrome received unexpected arguments: $chromeArguments"
-  )
+  Assert-True ($chromeArguments.Contains("--user-data-dir=$chromeProfilePath")) 'dedicated profile argument'
+  Assert-True ($chromeArguments.Contains('--no-first-run')) 'first-run prompt suppression'
+  Assert-True ($chromeArguments.Contains('--no-default-browser-check')) 'default-browser prompt suppression'
+  Assert-True ($chromeArguments.EndsWith("http://localhost:$startPort")) 'exact Chrome URL'
+  Assert-True (-not $chromeArguments.Contains('--profile-directory')) 'normal Chrome profile selector'
+  Assert-True (
+    $browserResult.Output.Contains("LOKR_CHROME_PROFILE=$chromeProfilePath")
+  ) 'reported dedicated profile path'
+
+  Remove-Item -LiteralPath $chromeInvocationPath -Force
+  $secondBrowserResult = Invoke-Launcher `
+    -PowerShellPath $powerShellPath `
+    -LauncherPath $launcherPath `
+    -ProjectRoot $projectRoot `
+    -Port $startPort `
+    -ChromePath $chromeStubPath `
+    -ChromeUserDataDirectory $chromeProfilePath `
+    -OpenBrowser
+  Assert-True ($secondBrowserResult.ExitCode -eq 0) 'second dedicated-profile launch failed'
+  Assert-True ($secondBrowserResult.Output.Contains('LOKR_STATUS=reused')) 'profile launch did not reuse server'
+  Assert-True (
+    $secondBrowserResult.Output.Contains("LOKR_CHROME_PROFILE=$chromeProfilePath")
+  ) 'second launch changed dedicated profile path'
+
+  $profileCollisionPath = Join-Path $temporaryRoot 'Profile Is A File'
+  Set-Content -LiteralPath $profileCollisionPath -Encoding ASCII -Value 'not a directory'
+  $profileCollisionPort = Get-FreePort
+  $profileCollisionResult = Invoke-Launcher `
+    -PowerShellPath $powerShellPath `
+    -LauncherPath $launcherPath `
+    -ProjectRoot $projectRoot `
+    -Port $profileCollisionPort `
+    -ChromePath $chromeStubPath `
+    -ChromeUserDataDirectory $profileCollisionPath `
+    -OpenBrowser
+  Assert-True ($profileCollisionResult.ExitCode -ne 0) 'profile file collision was accepted'
+  Assert-True (
+    $profileCollisionResult.Output.Contains('profile path is not a directory')
+  ) 'profile file-collision message'
+  Assert-True (-not (Test-Port -Port $profileCollisionPort)) 'profile collision started a server'
 
   $missingChromePort = Get-FreePort
   $missingChromeResult = Invoke-Launcher `
