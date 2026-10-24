@@ -8,6 +8,8 @@ param(
   [ValidateRange(1, 300)]
   [int]$StartupTimeoutSeconds = 30,
 
+  [string]$ChromePath,
+
   [switch]$NoBrowser,
   [switch]$NoDialogs
 )
@@ -115,6 +117,54 @@ function Quote-ProcessArgument {
   return '"' + $Value + '"'
 }
 
+function Resolve-ChromeExecutable {
+  param([string]$RequestedPath)
+
+  if (-not [string]::IsNullOrWhiteSpace($RequestedPath)) {
+    if (-not (Test-Path -LiteralPath $RequestedPath -PathType Leaf)) {
+      throw "Google Chrome was not found at the requested path: $RequestedPath"
+    }
+    return (Resolve-Path -LiteralPath $RequestedPath).Path
+  }
+
+  $candidates = @()
+  $chromeCommand = Get-Command chrome.exe -CommandType Application -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+  if ($null -ne $chromeCommand) {
+    $candidates += $chromeCommand.Source
+  }
+
+  foreach ($registryPath in @(
+    'HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe',
+    'HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe',
+    'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe'
+  )) {
+    if (Test-Path -LiteralPath $registryPath) {
+      $registeredPath = (Get-Item -LiteralPath $registryPath).GetValue('')
+      if (-not [string]::IsNullOrWhiteSpace($registeredPath)) {
+        $candidates += $registeredPath
+      }
+    }
+  }
+
+  $candidates += @(
+    (Join-Path $env:LOCALAPPDATA 'Google\Chrome\Application\chrome.exe'),
+    (Join-Path $env:ProgramFiles 'Google\Chrome\Application\chrome.exe')
+  )
+  if (-not [string]::IsNullOrWhiteSpace(${env:ProgramFiles(x86)})) {
+    $candidates += Join-Path ${env:ProgramFiles(x86)} 'Google\Chrome\Application\chrome.exe'
+  }
+
+  foreach ($candidate in ($candidates | Select-Object -Unique)) {
+    if (-not [string]::IsNullOrWhiteSpace($candidate) -and
+        (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+      return (Resolve-Path -LiteralPath $candidate).Path
+    }
+  }
+
+  throw 'Google Chrome was not found. Install Chrome, then launch Lokr again.'
+}
+
 $mutex = $null
 $ownsMutex = $false
 $exitCode = 0
@@ -147,6 +197,11 @@ try {
   $nextCli = Join-Path $ProjectRoot 'node_modules\next\dist\bin\next'
   if (-not (Test-Path -LiteralPath $nextCli -PathType Leaf)) {
     throw 'The local Next.js executable is missing. Run pnpm install, then pnpm shortcut:install.'
+  }
+
+  $chromeExecutable = $null
+  if (-not $NoBrowser) {
+    $chromeExecutable = Resolve-ChromeExecutable -RequestedPath $ChromePath
   }
 
   $url = "http://localhost:$Port"
@@ -241,7 +296,7 @@ try {
   }
 
   if (-not $NoBrowser) {
-    Start-Process -FilePath $url
+    Start-Process -FilePath $chromeExecutable -ArgumentList @($url)
   }
 
   Write-Output "LOKR_STATUS=$status"

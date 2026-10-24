@@ -80,21 +80,36 @@ function Invoke-Launcher {
     [string]$LauncherPath,
     [string]$ProjectRoot,
     [int]$Port,
-    [int]$TimeoutSeconds = 15
+    [int]$TimeoutSeconds = 15,
+    [string]$ChromePath,
+    [switch]$OpenBrowser
   )
+
+  $launcherArguments = @(
+    '-NoProfile',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-File',
+    $LauncherPath,
+    '-ProjectRoot',
+    $ProjectRoot,
+    '-Port',
+    $Port,
+    '-StartupTimeoutSeconds',
+    $TimeoutSeconds,
+    '-NoDialogs'
+  )
+  if (-not $OpenBrowser) {
+    $launcherArguments += '-NoBrowser'
+  }
+  if (-not [string]::IsNullOrWhiteSpace($ChromePath)) {
+    $launcherArguments += @('-ChromePath', $ChromePath)
+  }
 
   $previousErrorAction = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
   try {
-    $output = & $PowerShellPath `
-      -NoProfile `
-      -ExecutionPolicy Bypass `
-      -File $LauncherPath `
-      -ProjectRoot $ProjectRoot `
-      -Port $Port `
-      -StartupTimeoutSeconds $TimeoutSeconds `
-      -NoBrowser `
-      -NoDialogs 2>&1 | Out-String
+    $output = & $PowerShellPath @launcherArguments 2>&1 | Out-String
     $launcherExitCode = $LASTEXITCODE
   } finally {
     $ErrorActionPreference = $previousErrorAction
@@ -295,6 +310,43 @@ try {
   Assert-True ($reuseResult.ExitCode -eq 0) "reuse failed: $($reuseResult.Output)"
   Assert-True ($reuseResult.Output.Contains('LOKR_STATUS=reused')) 'reuse status'
   Assert-True ($reuseResult.Output.Contains("LOKR_SERVER_PID=$startPid")) 'reuse PID changed'
+
+  $chromeInvocationPath = Join-Path $temporaryRoot 'chrome-invocation.txt'
+  $chromeStubPath = Join-Path $temporaryRoot 'Chrome Stub.cmd'
+  Set-Content -LiteralPath $chromeStubPath -Encoding ASCII -Value @(
+    '@echo off',
+    ('echo %*>"' + $chromeInvocationPath + '"')
+  )
+  $browserResult = Invoke-Launcher `
+    -PowerShellPath $powerShellPath `
+    -LauncherPath $launcherPath `
+    -ProjectRoot $projectRoot `
+    -Port $startPort `
+    -ChromePath $chromeStubPath `
+    -OpenBrowser
+  Assert-True ($browserResult.ExitCode -eq 0) "Chrome launch failed: $($browserResult.Output)"
+  $chromeDeadline = [DateTime]::UtcNow.AddSeconds(5)
+  while (-not (Test-Path -LiteralPath $chromeInvocationPath -PathType Leaf) -and
+      [DateTime]::UtcNow -lt $chromeDeadline) {
+    Start-Sleep -Milliseconds 50
+  }
+  Assert-True (Test-Path -LiteralPath $chromeInvocationPath -PathType Leaf) 'Chrome was not launched'
+  $chromeArguments = (Get-Content -LiteralPath $chromeInvocationPath -Raw).Trim()
+  Assert-True ($chromeArguments -eq "http://localhost:$startPort") (
+    "Chrome received unexpected arguments: $chromeArguments"
+  )
+
+  $missingChromePort = Get-FreePort
+  $missingChromeResult = Invoke-Launcher `
+    -PowerShellPath $powerShellPath `
+    -LauncherPath $launcherPath `
+    -ProjectRoot $projectRoot `
+    -Port $missingChromePort `
+    -ChromePath (Join-Path $temporaryRoot 'Missing Chrome.exe') `
+    -OpenBrowser
+  Assert-True ($missingChromeResult.ExitCode -ne 0) 'missing Chrome was accepted'
+  Assert-True ($missingChromeResult.Output.Contains('Chrome was not found')) 'missing-Chrome message'
+  Assert-True (-not (Test-Port -Port $missingChromePort)) 'missing Chrome started a server'
 
   $racePort = Get-FreePort
   for ($index = 0; $index -lt 2; $index++) {

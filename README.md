@@ -109,8 +109,11 @@ To use it:
 
 1. Double-click **Lokr** on the Desktop.
 2. The shortcut starts Lokr silently on `127.0.0.1:3001` if it is not already running.
-3. It waits for Lokr to become ready, then opens [http://localhost:3001](http://localhost:3001) in the default browser.
+3. It waits for Lokr to become ready, then opens [http://localhost:3001](http://localhost:3001) in your normal Google Chrome profile.
 4. Double-clicking it again reuses the existing Lokr server instead of starting another one.
+
+The shortcut does not change the Windows default browser and does not create a
+separate Chrome profile. Chrome must already be installed.
 
 After pulling updates or changing source code, run `pnpm shortcut:install` again.
 The existing shortcut is replaced only after the new production build succeeds.
@@ -122,6 +125,7 @@ it does not remove the repository or browser vault data.
 ### Shortcut troubleshooting
 
 - **Missing production build:** run `pnpm shortcut:install` again.
+- **Google Chrome was not found:** install Chrome in its standard per-user or system location, then launch Lokr again.
 - **Port 3001 is already in use:** close the unrelated application using that port, then launch Lokr again. The launcher will not reuse a server unless its response identifies it as Lokr.
 - **The repository was moved:** rerun `pnpm shortcut:install` from its new location so the shortcut paths are refreshed.
 - **The shortcut does not appear on the Desktop:** run the installer from a normal PowerShell window for the same Windows account that will use Lokr.
