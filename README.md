@@ -56,9 +56,9 @@ Scans all your entries and flags:
 - **Old passwords** — not changed in 90+ days
 
 ### Backup & Restore
-- **Export .vault** — encrypted backup file, safe to store in a cloud drive or USB stick
+- **Export .vault** — encrypted entries, password history and sticky notes, safe to store in a cloud drive or USB stick
 - **Import .vault** — restore your vault on any device running Lokr
-- **Export .csv** — plaintext export for migrating to another password manager (requires typing `CONFIRM`)
+- **Export .csv** — separate plaintext credential and sticky-note files (requires typing `CONFIRM`)
 - **Full Reset** — wipe all vault data from this device (requires typing `RESET`)
 - Reminder banner if no backup in 7+ days
 
@@ -202,19 +202,19 @@ Create a separate browser profile just for Lokr. This isolates it from extension
 
 1. On any device running Lokr, go to the **Backup** tab
 2. Under **Import Backup**, click the file picker and select your `.vault` file
-3. Lokr verifies the file's integrity and imports all entries
+3. Lokr verifies the file's integrity and imports all entries, history and sticky notes
 4. Your existing vault data is replaced — export a backup first if needed
 
 ### Exporting to CSV (for Migration)
 
-Use this only if you are moving to another password manager.
+Use these only for migration or a plaintext copy you will secure immediately.
 
 1. Go to the **Backup** tab → scroll to **Export Plaintext CSV**
-2. Read the warning — the CSV file contains **every password in plain text**
-3. Type `CONFIRM` in the input field to unlock the export button
-4. Click **Download lokr-export.csv**
-5. Import the CSV into your new password manager
-6. **Delete the CSV file immediately after import**
+2. Read the warning — the files contain **passwords or sticky notes in plain text**
+3. Type `CONFIRM` once to unlock both export buttons
+4. Download `lokr-export.csv` for credentials and/or `lokr-notes-export.csv` for notes
+5. Import the credential CSV into your new password manager; note bodies are plain text in the notes CSV
+6. **Delete the CSV files immediately after use**
 
 ### Full Reset
 

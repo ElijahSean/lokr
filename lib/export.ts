@@ -4,14 +4,14 @@
  * Lokr supports two backup formats:
  *
  *  1. .vault file (encrypted backup)
- *     - JSON envelope containing encrypted entries, password history + Argon2 salt
+ *     - JSON envelope containing encrypted entries, password history, notes + Argon2 salt
  *     - HMAC-SHA256 signed to detect corruption or tampering
  *     - Safe to store anywhere — decryption requires the master password
  *     - File extension: .vault, filename: lokr-backup.vault
  *
- *  2. .csv file (plaintext export — DANGEROUS)
- *     - Standard CSV with headers: site, username, password, notes, recovery_codes
- *     - Passwords are in PLAINTEXT — anyone who opens this file sees all passwords
+ *  2. .csv files (plaintext export — DANGEROUS)
+ *     - Credentials and sticky notes download separately to preserve manager compatibility
+ *     - Passwords and note contents are in PLAINTEXT
  *     - Requires explicit "CONFIRM" text input before export is enabled
  *     - Should be deleted immediately after use (e.g. importing into another manager)
  *     - File extension: .csv, filename: lokr-export.csv
@@ -20,14 +20,18 @@
  * to reduce the attack surface of the import path.
  */
 
-import { db, clearStickyNotes, type VaultEntry } from './db'
+import { db, type VaultEntry } from './db'
 import { signVault, verifyVault, decryptEntry, deriveKeys, base64ToBuffer } from './crypto'
 import { buildVaultPayload } from './vaultPayload'
 import {
   buildBackupPayloadV2,
+  buildBackupPayloadV3,
   type BackupEntry,
   type BackupHistory,
+  type BackupNote,
 } from './backupPayload'
+import { decodeNote } from './notes'
+import { documentToPlainText } from './noteDoc'
 
 // ─── .vault File Format ───────────────────────────────────────────────────────
 
@@ -48,7 +52,17 @@ interface VaultFileV2 {
   signature: string
 }
 
-type VaultFile = VaultFileV1 | VaultFileV2
+/** Version 3 adds encrypted sticky notes to the signed backup envelope. */
+interface VaultFileV3 {
+  version: 3
+  salt: string
+  entries: BackupEntry[]
+  history: BackupHistory[]
+  notes: BackupNote[]
+  signature: string
+}
+
+type VaultFile = VaultFileV1 | VaultFileV2 | VaultFileV3
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -87,6 +101,16 @@ function isHistory(value: unknown): boolean {
     isIsoDate(value.replacedAt)
 }
 
+function isNote(value: unknown): boolean {
+  return isRecord(value) &&
+    Number.isInteger(value.id) &&
+    Number(value.id) > 0 &&
+    typeof value.encryptedNote === 'string' &&
+    typeof value.iv === 'string' &&
+    isIsoDate(value.createdAt) &&
+    isIsoDate(value.updatedAt)
+}
+
 /** Relationships are checked after HMAC verification so signed-data edits get the integrity error. */
 function validateHistoryRelationships(entries: BackupEntry[], history: BackupHistory[]): void {
   const entryIds = new Set<number>()
@@ -101,12 +125,22 @@ function validateHistoryRelationships(entries: BackupEntry[], history: BackupHis
   }
 }
 
+function validateNoteIds(notes: BackupNote[]): void {
+  const noteIds = new Set<number>()
+  for (const note of notes) {
+    if (noteIds.has(note.id)) {
+      throw new Error('Invalid .vault file: duplicate note IDs.')
+    }
+    noteIds.add(note.id)
+  }
+}
+
 // ─── Export: Encrypted .vault ─────────────────────────────────────────────────
 
 /**
- * Exports entries and password history as an encrypted .vault file.
+ * Exports entries, password history and sticky notes as an encrypted .vault file.
  *
- * Entries and history stay encrypted — this function bundles them with the
+ * Entries, history and notes stay encrypted — this function bundles them with the
  * salt and signs the bundle. The master password is NOT included.
  *
  * To restore: user provides the .vault file + the same master password.
@@ -122,6 +156,7 @@ export async function exportVaultFile(
   // Load ciphertext in stable ID order so identical state has identical signed bytes.
   const storedEntries = await db.vault_entries.orderBy('id').toArray()
   const storedHistory = await db.password_history.orderBy('id').toArray()
+  const storedNotes = await db.sticky_notes.orderBy('id').toArray()
 
   const entries: BackupEntry[] = storedEntries.map(entry => {
     if (typeof entry.id !== 'number') {
@@ -142,20 +177,33 @@ export async function exportVaultFile(
     }
   })
 
-  const payload: Omit<VaultFileV2, 'signature'> = {
-    version: 2,
+  const notes: BackupNote[] = storedNotes.map(note => {
+    if (typeof note.id !== 'number') {
+      throw new Error('Cannot export a sticky note without an ID.')
+    }
+    return { ...note, id: note.id }
+  })
+
+  const payload: Omit<VaultFileV3, 'signature'> = {
+    version: 3,
     salt: saltB64,
     entries,
     history,
+    notes,
   }
 
-  // Sticky notes remain outside backups until task 2.3. History is signed here
-  // without changing the at-rest buildVaultPayload compatibility contract.
-  const payloadJson = buildBackupPayloadV2(payload.salt, payload.entries, payload.history)
+  // The versioned backup payload is separate from the byte-compatible at-rest
+  // vault payload. Every encrypted note and its source ID is signed here.
+  const payloadJson = buildBackupPayloadV3(
+    payload.salt,
+    payload.entries,
+    payload.history,
+    payload.notes,
+  )
   const signature   = await signVault(hmacKey, payloadJson)
 
   // The full file is payload + signature
-  const vaultFile: VaultFileV2 = { ...payload, signature }
+  const vaultFile: VaultFileV3 = { ...payload, signature }
 
   return JSON.stringify(vaultFile, null, 2)  // Pretty-print for human readability
 }
@@ -186,6 +234,7 @@ export async function downloadVaultFile(
 /** What a successful restore hands back to the caller. */
 export interface RestoreResult {
   count: number             // Number of entries restored
+  noteCount: number         // Number of sticky notes restored
   encryptionKey: CryptoKey  // Keys derived from the FILE's salt — the caller must
   hmacKey: CryptoKey        // adopt these as the new session keys
   lastBackupAt: Date        // Exact timestamp retained or established by restore
@@ -225,8 +274,8 @@ export async function restoreVaultFile(
   if (!isRecord(raw)) {
     throw new Error('Invalid .vault file: missing required fields.')
   }
-  if (raw.version !== 1 && raw.version !== 2) {
-    throw new Error(`Unsupported vault version: ${String(raw.version)}. Expected: 1 or 2`)
+  if (raw.version !== 1 && raw.version !== 2 && raw.version !== 3) {
+    throw new Error(`Unsupported vault version: ${String(raw.version)}. Expected: 1, 2 or 3`)
   }
   if (
     typeof raw.salt !== 'string' ||
@@ -237,16 +286,20 @@ export async function restoreVaultFile(
   ) {
     throw new Error('Invalid .vault file: missing required fields.')
   }
-  if (!raw.entries.every(entry => isEntry(entry, raw.version === 2))) {
+  if (!raw.entries.every(entry => isEntry(entry, raw.version !== 1))) {
     throw new Error('Invalid .vault file: malformed entry data.')
   }
-  if (raw.version === 2 && (!Array.isArray(raw.history) || !raw.history.every(isHistory))) {
+  if (raw.version !== 1 && (!Array.isArray(raw.history) || !raw.history.every(isHistory))) {
     throw new Error('Invalid .vault file: malformed password history.')
+  }
+  if (raw.version === 3 && (!Array.isArray(raw.notes) || !raw.notes.every(isNote))) {
+    throw new Error('Invalid .vault file: malformed sticky notes.')
   }
 
   const parsed = raw as unknown as VaultFile
   const { version, salt, entries, signature } = parsed
-  const history = version === 2 ? parsed.history : []
+  const history = version === 1 ? [] : parsed.history
+  const notes = version === 3 ? parsed.notes : []
 
   // Derive keys from the file's own salt — slow (Argon2id, ~1–2s) by design
   const { encryptionKey, hmacKey } = await deriveKeys(
@@ -254,11 +307,13 @@ export async function restoreVaultFile(
     base64ToBuffer(salt)
   )
 
-  // Version 1 keeps its exact historical bytes; version 2 additionally signs
-  // every history row. Neither path trusts an unsigned extra field.
+  // Each old version keeps its exact historical bytes. Version 3 signs notes;
+  // older files cannot use an unsigned extra field to inject them.
   const payload = version === 1
     ? buildVaultPayload(salt, entries)
-    : buildBackupPayloadV2(salt, entries, history)
+    : version === 2
+      ? buildBackupPayloadV2(salt, entries, history)
+      : buildBackupPayloadV3(salt, entries, history, notes)
   const isValid = await verifyVault(hmacKey, payload, signature)
 
   if (!isValid) {
@@ -267,9 +322,10 @@ export async function restoreVaultFile(
     )
   }
 
-  if (version === 2) {
+  if (version !== 1) {
     validateHistoryRelationships(entries, history)
   }
+  if (version === 3) validateNoteIds(notes)
 
   // Belt-and-braces: prove the AES key actually decrypts the data before
   // we destroy the current vault.
@@ -281,17 +337,26 @@ export async function restoreVaultFile(
     }
   }
 
+  // Prove every note ciphertext is decryptable and contains a supported note
+  // document before replacing any local data.
+  try {
+    for (const note of notes) {
+      decodeNote(await decryptEntry(encryptionKey, note.encryptedNote, note.iv))
+    }
+  } catch {
+    throw new Error('Backup notes could not be decrypted with this password.')
+  }
+
   // Preserve truthful local backup history only after untrusted input passes
   // every fail-closed check; a fresh destination knows of this restored backup now.
   const previousMeta = await db.vault_meta.get(1)
   const lastBackupAt = previousMeta?.lastBackupAt ?? new Date()
 
   // Replace local data only after every structural, HMAC and AES check above.
-  // Sticky notes still clear because backups do not carry them until task 2.3.
   await db.vault_entries.clear()
   await db.health_flags.clear()
   await db.password_history.clear()
-  await clearStickyNotes()
+  await db.sticky_notes.clear()
 
   const entryIdMap = new Map<number, number>()
   for (const e of entries) {
@@ -309,10 +374,10 @@ export async function restoreVaultFile(
       createdAt:              new Date(e.createdAt),
       updatedAt:              new Date(e.updatedAt),
     }) as number
-    if (version === 2 && typeof e.id === 'number') entryIdMap.set(e.id, newId)
+    if (version !== 1 && typeof e.id === 'number') entryIdMap.set(e.id, newId)
   }
 
-  if (version === 2 && history.length > 0) {
+  if (version !== 1 && history.length > 0) {
     await db.password_history.bulkAdd(history.map(row => ({
       entryId: entryIdMap.get(row.entryId)!,
       encryptedPassword: row.encryptedPassword,
@@ -321,10 +386,20 @@ export async function restoreVaultFile(
     })))
   }
 
+  if (version === 3 && notes.length > 0) {
+    await db.sticky_notes.bulkAdd(notes.map(note => ({
+      encryptedNote: note.encryptedNote,
+      iv: note.iv,
+      createdAt: new Date(note.createdAt),
+      updatedAt: new Date(note.updatedAt),
+    })))
+  }
+
   // Re-sign under the entries as actually stored (restore assigned new IDs,
   // so the file's signature no longer matches the local state).
   const stored       = await db.vault_entries.orderBy('id').toArray()
-  const newPayload   = buildVaultPayload(salt, stored)  // notes table is empty now
+  const storedNotes  = await db.sticky_notes.orderBy('id').toArray()
+  const newPayload   = buildVaultPayload(salt, stored, storedNotes)
   const newSignature = await signVault(hmacKey, newPayload)
 
   await db.vault_meta.put({
@@ -335,13 +410,19 @@ export async function restoreVaultFile(
     lastBackupAt,
   })
 
-  return { count: entries.length, encryptionKey, hmacKey, lastBackupAt }
+  return {
+    count: entries.length,
+    noteCount: notes.length,
+    encryptionKey,
+    hmacKey,
+    lastBackupAt,
+  }
 }
 
 // ─── Export: Plaintext CSV ────────────────────────────────────────────────────
 
 /**
- * Exports all vault entries as a plaintext CSV file.
+ * Builds the password-manager-compatible plaintext credentials CSV.
  *
  * ⚠️  SECURITY WARNING ⚠️
  * This file contains ALL PASSWORDS IN PLAINTEXT.
@@ -353,7 +434,7 @@ export async function restoreVaultFile(
  *
  * @param encKey - AES-256-GCM key to decrypt passwords for export
  */
-export async function exportCSV(encKey: CryptoKey): Promise<void> {
+export async function buildEntriesCSV(encKey: CryptoKey): Promise<string> {
   const entries = await db.vault_entries.orderBy('site').toArray()
 
   // Build CSV header row
@@ -383,14 +464,47 @@ export async function exportCSV(encKey: CryptoKey): Promise<void> {
     rows.push(csvRow)
   }
 
-  const csvContent = rows.join('\n')
-  const blob       = new Blob([csvContent], { type: 'text/csv' })
-  const url        = URL.createObjectURL(blob)
-  const link       = document.createElement('a')
-  link.href        = url
-  link.download    = 'lokr-export.csv'
+  return rows.join('\n')
+}
+
+/** Builds a separate plaintext notes CSV so credential importers stay compatible. */
+export async function buildNotesCSV(encKey: CryptoKey): Promise<string> {
+  const notes = await db.sticky_notes.orderBy('id').toArray()
+  const rows = ['title,body,colour,pinned,created_at,updated_at']
+
+  for (const note of notes) {
+    const content = decodeNote(await decryptEntry(encKey, note.encryptedNote, note.iv))
+    rows.push([
+      escapeCsv(content.title),
+      escapeCsv(documentToPlainText(content.body)),
+      escapeCsv(content.colour),
+      escapeCsv(String(content.pinned)),
+      escapeCsv(note.createdAt.toISOString()),
+      escapeCsv(note.updatedAt.toISOString()),
+    ].join(','))
+  }
+
+  return rows.join('\n')
+}
+
+function downloadCsv(content: string, filename: string): void {
+  const blob = new Blob([content], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
   link.click()
   URL.revokeObjectURL(url)
+}
+
+/** Downloads credentials only; the UI's typed CONFIRM gate must precede this. */
+export async function exportCSV(encKey: CryptoKey): Promise<void> {
+  downloadCsv(await buildEntriesCSV(encKey), 'lokr-export.csv')
+}
+
+/** Downloads sticky notes separately behind the same typed CONFIRM gate. */
+export async function exportNotesCSV(encKey: CryptoKey): Promise<void> {
+  downloadCsv(await buildNotesCSV(encKey), 'lokr-notes-export.csv')
 }
 
 /** Escapes a single CSV field value by wrapping in quotes if it contains special chars */

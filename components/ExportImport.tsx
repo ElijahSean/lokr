@@ -4,16 +4,16 @@
  * Four operations:
  *
  *  1. Export .vault (encrypted backup)
- *     - Bundles all encrypted entries + Argon2 salt into a JSON file
+ *     - Bundles encrypted entries, history and sticky notes + Argon2 salt
  *     - HMAC-signed to detect corruption
  *     - Safe to store anywhere — requires master password to decrypt
  *     - Filename: lokr-backup.vault
  *
- *  2. Export .csv (plaintext — DANGEROUS)
- *     - Decrypts all passwords and writes them to a plain text CSV
+ *  2. Export .csv files (plaintext — DANGEROUS)
+ *     - Credentials and sticky notes download separately
  *     - User must type "CONFIRM" in a text field before button enables
- *     - Warns prominently that this file contains all passwords in plaintext
- *     - Filename: lokr-export.csv
+ *     - Warns prominently that these files contain decrypted vault data
+ *     - Filenames: lokr-export.csv and lokr-notes-export.csv
  *
  *  3. Import .vault
  *     - User picks the file AND enters the master password the backup was
@@ -21,8 +21,7 @@
  *       from another device or a pre-reset vault restore correctly
  *     - HMAC is verified with the file-derived key before any local write
  *     - Existing vault is cleared before import (full replace, not merge)
- *     - Sticky notes aren't in backups yet (task 2.3), so restore deletes them;
- *       when there are any, the user must tick a box naming how many first
+ *     - Existing local notes are acknowledged before replacement
  *     - Vault is re-signed and the session adopts the file-derived keys
  *
  *  4. Full reset (DESTRUCTIVE)
@@ -37,7 +36,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSession } from '@/hooks/useSession'
 import { db, countStickyNotes, clearAllVaultData } from '@/lib/db'
-import { downloadVaultFile, restoreVaultFile, exportCSV } from '@/lib/export'
+import { downloadVaultFile, restoreVaultFile, exportCSV, exportNotesCSV } from '@/lib/export'
 import { CheckIcon, ClockIcon, DownloadIcon, TrashIcon, UploadIcon, WarningIcon } from '@/components/Icons'
 import {
   CARD, DANGER_CARD, DANGER_OUTLINE, ERROR_BANNER, INPUT, NOTICE_BANNER, PRIMARY_BUTTON,
@@ -54,17 +53,17 @@ export default function ExportImport() {
 
   // ── CSV export state ──────────────────────────────────────────────────────────
   const [csvConfirmText, setCsvConfirmText] = useState('')
-  const [isExportingCsv, setIsExportingCsv] = useState(false)
+  const [exportingCsv, setExportingCsv] = useState<'entries' | 'notes' | null>(null)
   const [csvError, setCsvError] = useState<string | null>(null)
 
   // ── Import state ──────────────────────────────────────────────────────────────
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importPassword, setImportPassword] = useState('')
   const [isImporting, setIsImporting] = useState(false)
-  const [importResult, setImportResult] = useState<{ count: number } | null>(null)
+  const [importResult, setImportResult] = useState<{ count: number; noteCount: number } | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  // Local sticky notes a restore would delete (backups don't carry them until 2.3)
+  // Local sticky notes a full-replacement restore would overwrite.
   const [noteCount, setNoteCount] = useState(0)
   const [notesAcknowledged, setNotesAcknowledged] = useState(false)
 
@@ -107,17 +106,17 @@ export default function ExportImport() {
   }
 
   // ── Export .csv ───────────────────────────────────────────────────────────────
-  async function handleExportCsv() {
+  async function handleExportCsv(kind: 'entries' | 'notes') {
     if (!encryptionKey || csvConfirmText !== 'CONFIRM') return
-    setIsExportingCsv(true)
+    setExportingCsv(kind)
     setCsvError(null)
     try {
-      await exportCSV(encryptionKey)
-      setCsvConfirmText('')
+      if (kind === 'entries') await exportCSV(encryptionKey)
+      else await exportNotesCSV(encryptionKey)
     } catch (err) {
       setCsvError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
-      setIsExportingCsv(false)
+      setExportingCsv(null)
     }
   }
 
@@ -145,7 +144,7 @@ export default function ExportImport() {
 
       // Derives keys from the FILE's salt + the entered password, verifies the
       // HMAC, replaces all local data, and re-signs the vault.
-      const { count, encryptionKey: newEncKey, hmacKey: newHmacKey, lastBackupAt } =
+      const { count, noteCount: restoredNoteCount, encryptionKey: newEncKey, hmacKey: newHmacKey, lastBackupAt } =
         await restoreVaultFile(importPassword, content)
 
       // The restored vault may have a different salt/password than the current
@@ -153,7 +152,7 @@ export default function ExportImport() {
       adoptSessionKeys(newEncKey, newHmacKey)
       setLastBackupDate(lastBackupAt)
 
-      setImportResult({ count })
+      setImportResult({ count, noteCount: restoredNoteCount })
       setImportFile(null)
       setImportPassword('')
       setNoteCount(0)
@@ -231,10 +230,7 @@ export default function ExportImport() {
               <DownloadIcon /> Export encrypted backup
             </h3>
             <p className="text-slate-500 text-sm mt-1">
-              Downloads a <code className="text-slate-400">.vault</code> file. Passwords stay encrypted — safe to store anywhere.
-            </p>
-            <p className="text-slate-500 text-xs mt-1">
-              Sticky notes aren&apos;t included in backups yet.
+              Downloads a <code className="text-slate-400">.vault</code> file. Passwords and notes stay encrypted — safe to store anywhere.
             </p>
           </div>
           {lastBackupDate && (
@@ -319,8 +315,8 @@ export default function ExportImport() {
                 <WarningIcon className="w-4 h-4 mt-0.5 flex-shrink-0 text-warning" />
                 <div className="space-y-2">
                   <p>
-                    Notes aren&apos;t included in backups yet; restoring deletes
-                    your {noteCount} {noteCount === 1 ? 'note' : 'notes'}.
+                    Restoring replaces your {noteCount} local {noteCount === 1 ? 'note' : 'notes'}
+                    {' '}with the notes from this backup.
                   </p>
                   <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
                     <input
@@ -330,7 +326,7 @@ export default function ExportImport() {
                       disabled={isImporting}
                       className="w-4 h-4 rounded accent-brand-500"
                     />
-                    I understand my {noteCount} {noteCount === 1 ? 'note' : 'notes'} will be deleted
+                    I understand my {noteCount} local {noteCount === 1 ? 'note' : 'notes'} will be replaced
                   </label>
                 </div>
               </div>
@@ -354,7 +350,8 @@ export default function ExportImport() {
         {importResult && (
           <p className="text-primary text-sm flex items-center gap-2" role="status">
             <CheckIcon className="w-4 h-4 text-success" />
-            Imported {importResult.count} entries successfully.
+            Imported {importResult.count} entries and {importResult.noteCount}
+            {' '}{importResult.noteCount === 1 ? 'note' : 'notes'} successfully.
           </p>
         )}
         {importError && (
@@ -376,11 +373,11 @@ export default function ExportImport() {
           <h3 className="text-primary font-medium flex items-center gap-2">
             <WarningIcon className="w-4 h-4 text-danger" /> Export plaintext CSV
           </h3>
-          <p className="text-primary text-sm font-medium mt-2">Contains all passwords in plaintext</p>
+          <p className="text-primary text-sm font-medium mt-2">Contains passwords and notes in plaintext</p>
           <p className="text-slate-400 text-sm mt-1">
-            This CSV contains every password unencrypted. Anyone who opens this file
-            can read all your credentials. Delete it immediately after use.
-            Only export if migrating to another password manager.
+            The credential CSV contains every password; the separate notes CSV contains
+            every sticky note. Anyone who opens either file can read its contents.
+            Delete them immediately after use.
           </p>
         </div>
 
@@ -400,15 +397,25 @@ export default function ExportImport() {
           />
         </div>
 
-        <button
-          onClick={handleExportCsv}
-          disabled={csvConfirmText !== 'CONFIRM' || isExportingCsv}
-          className={`${DANGER_OUTLINE} w-full font-medium text-sm py-2.5 rounded-full`}
-        >
-          {/* Outlined, not filled, so it never looks like the graphite Save (3.2) */}
-          <WarningIcon />
-          {isExportingCsv ? 'Exporting…' : 'Download lokr-export.csv'}
-        </button>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <button
+            onClick={() => handleExportCsv('entries')}
+            disabled={csvConfirmText !== 'CONFIRM' || exportingCsv !== null}
+            className={`${DANGER_OUTLINE} w-full font-medium text-sm py-2.5 rounded-full`}
+          >
+            {/* Outlined, not filled, so it never looks like the graphite Save (3.2) */}
+            <WarningIcon />
+            {exportingCsv === 'entries' ? 'Exporting…' : 'Download credentials CSV'}
+          </button>
+          <button
+            onClick={() => handleExportCsv('notes')}
+            disabled={csvConfirmText !== 'CONFIRM' || exportingCsv !== null}
+            className={`${DANGER_OUTLINE} w-full font-medium text-sm py-2.5 rounded-full`}
+          >
+            <WarningIcon />
+            {exportingCsv === 'notes' ? 'Exporting…' : 'Download notes CSV'}
+          </button>
+        </div>
 
         {csvError && (
           <div className={ERROR_BANNER} role="alert">
