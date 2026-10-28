@@ -122,9 +122,13 @@ To use it:
 5. Double-clicking it again reuses the existing Lokr server and brings the open Lokr window to the front (restored if minimised) instead of opening another one.
 
 Links you Ctrl+click in a note open in an ordinary Chrome window of the same
-dedicated profile, which shows Chrome's icon while it is open. Pinning Lokr to
-the taskbar so that one pinned button starts it after a restart is not working
-yet (task 4.5).
+dedicated profile, which shows Chrome's icon while it is open.
+
+To keep Lokr on the taskbar, open it, right-click its padlock button and choose
+**Pin to taskbar**. Windows saves the pin when the Lokr window next closes. After
+that, one click on the pinned padlock starts the hidden server if it isn't
+running and opens Lokr on that same button. Pinning the Desktop shortcut itself,
+or adding it to the Start menu, does not work: Windows records no pin from it.
 
 The shortcut does not change the Windows default browser or modify your normal
 Chrome profile. Chrome must already be installed. The dedicated profile persists,

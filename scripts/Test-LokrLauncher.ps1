@@ -474,6 +474,13 @@ public static class ChromeStub {
     $browserResult.Output.Contains("LOKR_CHROME_PROFILE=$chromeProfilePath")
   ) 'reported dedicated profile path'
   Assert-True ($browserResult.Output.Contains('LOKR_WINDOW=opened')) "window not labelled: $($browserResult.Output)"
+  # The temporary paths make the re-open command longer than Windows accepts:
+  # the window keeps its app ID but is reported, not silently left, unpinnable.
+  # The default install's command (about 170 characters) was seen pinned in 4.5.
+  Assert-True ($browserResult.Output.Contains('LOKR_RELAUNCH=skipped')) "long re-open command not reported: $($browserResult.Output)"
+  Assert-True (
+    $browserResult.Output.Contains('this Lokr window cannot be pinned')
+  ) 'long re-open command warning'
   $stubWindowProcessId = $stubWindowProcessIds[-1]
   $stubWindow = [Lokr.Launcher.LokrShell]::FindMarked([int[]]@($stubWindowProcessId), $startPort)
   Assert-True ($stubWindow -ne 0) 'the opened window carries no Lokr marker'
@@ -499,6 +506,7 @@ public static class ChromeStub {
   Assert-True (
     [regex]::IsMatch($secondBrowserResult.Output, 'LOKR_WINDOW=(focused|flashed)')
   ) "second launch did not reuse the window: $($secondBrowserResult.Output)"
+  Assert-True (-not $secondBrowserResult.Output.Contains('LOKR_RELAUNCH=')) 'an existing window was labelled again'
   Assert-True (-not (Wait-ForFile -Path $chromeInvocationPath -Seconds 2)) 'second launch started Chrome again'
 
   # A minimised Lokr window is restored, still without a second Chrome start.
@@ -549,6 +557,7 @@ public static class ChromeStub {
     -OpenBrowser
   Assert-True ($unlabelledResult.ExitCode -eq 0) "windowless Chrome failed the launch: $($unlabelledResult.Output)"
   Assert-True ($unlabelledResult.Output.Contains('LOKR_WINDOW=unlabelled')) 'windowless status'
+  Assert-True (-not $unlabelledResult.Output.Contains('LOKR_RELAUNCH=')) 'relaunch reported with no window'
 
   $profileCollisionPath = Join-Path $temporaryRoot 'Profile Is A File'
   Set-Content -LiteralPath $profileCollisionPath -Encoding ASCII -Value 'not a directory'

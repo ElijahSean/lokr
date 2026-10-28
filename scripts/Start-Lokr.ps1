@@ -369,6 +369,7 @@ try {
   }
 
   $windowStatus = $null
+  $relaunchStatus = $null
   if (-not $NoBrowser) {
     Add-Type -TypeDefinition (
       Get-Content -LiteralPath (Join-Path $PSScriptRoot 'LokrShell.cs') -Raw
@@ -402,7 +403,10 @@ try {
 
       $iconResource = (Resolve-WindowIcon -Root $ProjectRoot) + ',0'
       # The command a pinned Lokr window runs: this launcher, hidden, with the
-      # same port and profile, so it starts the server after a restart.
+      # same port and profile, so it starts the server after a restart. Pinning
+      # the window's own button is how Lokr is pinned (task 4.5): Windows saves
+      # the pin from these values when the window closes, as an implicit
+      # shortcut, not in the User Pinned\TaskBar folder.
       # PowerShell's documented short flags (-NoProfile -NonInteractive
       # -ExecutionPolicy -WindowStyle) keep this under Windows' length cap.
       $relaunchArguments = @(
@@ -424,13 +428,16 @@ try {
       $relaunchCommand = (Quote-ProcessArgument -Value (Join-Path $PSHOME 'powershell.exe')) +
         ' ' + ($relaunchArguments -join ' ')
       # Windows refuses relaunch values of 256 characters or more. The default
-      # install is about 170; a long custom path keeps the app ID (so a pinned
-      # shortcut still holds the window) but cannot pin the window itself.
+      # install is about 170; a long custom path keeps the app ID (one taskbar
+      # button) but leaves the window unpinnable. A pinned Desktop shortcut is
+      # no substitute: Windows records no pin from it (task 4.5).
+      $relaunchStatus = 'set'
       if ($relaunchCommand.Length -ge 256 -or $iconResource.Length -ge 256) {
         [Console]::Error.WriteLine(
-          'Lokr launcher: the re-open command is too long for Windows; pin the Desktop shortcut rather than the window.'
+          'Lokr launcher: the re-open command is too long for Windows, so this Lokr window cannot be pinned; use a shorter project or profile path.'
         )
         $relaunchCommand = ''
+        $relaunchStatus = 'skipped'
       }
 
       # Chrome sets no app ID on an --app window, so the new window is labelled
@@ -474,6 +481,10 @@ try {
   if (-not $NoBrowser) {
     Write-Output "LOKR_CHROME_PROFILE=$chromeProfileDirectory"
     Write-Output "LOKR_WINDOW=$windowStatus"
+    # Only a newly labelled window has relaunch values; an existing one keeps its own.
+    if ($windowStatus -eq 'opened') {
+      Write-Output "LOKR_RELAUNCH=$relaunchStatus"
+    }
   }
 } catch {
   $exitCode = 1

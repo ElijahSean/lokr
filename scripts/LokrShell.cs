@@ -4,7 +4,9 @@
 //
 // Chrome gives an --app window no AppUserModelID of its own, so the launcher
 // labels the window itself and the installer writes the same ID onto Lokr.lnk.
-// Windows then shows the pinned shortcut and the open window as one Lokr button.
+// The window's relaunch values are what make it pinnable: Windows saves a
+// pinned Lokr window as its own implicit shortcut when the window closes.
+// Pinning Lokr.lnk itself is not recorded (task 4.5).
 // Nothing here reads browser storage, profile files or page content.
 using System;
 using System.Collections.Generic;

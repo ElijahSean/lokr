@@ -175,7 +175,8 @@ try {
   }
 
   # WScript.Shell cannot set an app ID. The launcher labels Lokr's window with
-  # the same one, so a pinned shortcut and the open window share one button.
+  # the same one, so the shortcut and the window it opens are one Lokr program
+  # to Windows. Pinning happens from the open window's button (task 4.5).
   [Lokr.Launcher.LokrShell]::SetShortcutAppId($temporaryPath, $appId)
   if ([Lokr.Launcher.LokrShell]::GetShortcutAppId($temporaryPath) -ne $appId) {
     throw 'Windows did not keep the Lokr app ID on the shortcut. The Desktop shortcut was not changed.'
