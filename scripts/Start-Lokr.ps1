@@ -193,6 +193,46 @@ function Resolve-ChromeUserDataDirectory {
   return (Resolve-Path -LiteralPath $fullPath).Path
 }
 
+# Chrome processes started with this exact dedicated profile. Matching the
+# program and command line finds Lokr's windows without reading anything inside
+# the profile (4.3).
+function Get-ChromeProfileProcessIds {
+  param(
+    [string]$ChromeExecutable,
+    [string]$ProfileDirectory
+  )
+
+  $pattern = '--user-data-dir="?' + [regex]::Escape($ProfileDirectory) + '"?(\s|"|$)'
+  Get-CimInstance -ClassName Win32_Process -ErrorAction Stop |
+    Where-Object {
+      $null -ne $_.CommandLine -and
+      $null -ne $_.ExecutablePath -and
+      [string]::Equals($_.ExecutablePath, $ChromeExecutable, 'OrdinalIgnoreCase') -and
+      [regex]::IsMatch($_.CommandLine, $pattern, 'IgnoreCase')
+    } |
+    ForEach-Object { [int]$_.ProcessId }
+}
+
+# Prefer the installer's content-hash icon copy: Explorer caches icons by path,
+# so a changed icon needs a new path (4.1). Falls back to the repository icon.
+function Resolve-WindowIcon {
+  param([string]$Root)
+
+  $projectIcon = Join-Path $Root 'public\lokr.ico'
+  $localAppData = [Environment]::GetFolderPath(
+    [Environment+SpecialFolder]::LocalApplicationData
+  )
+  if (-not [string]::IsNullOrWhiteSpace($localAppData) -and
+      (Test-Path -LiteralPath $projectIcon -PathType Leaf)) {
+    $iconHash = (Get-FileHash -LiteralPath $projectIcon -Algorithm SHA256).Hash.ToLowerInvariant()
+    $installedIcon = Join-Path $localAppData "Lokr\icons\lokr-$iconHash.ico"
+    if (Test-Path -LiteralPath $installedIcon -PathType Leaf) {
+      return $installedIcon
+    }
+  }
+  return $projectIcon
+}
+
 $mutex = $null
 $ownsMutex = $false
 $exitCode = 0
@@ -207,14 +247,16 @@ try {
 
   # Serialising by port closes the double-click race before either process probes
   # or starts Next. The mutex holds no vault data and exists only for this launch.
+  # A launch may wait once for the server and once for the window (4.4).
+  $mutexWaitSeconds = (2 * $StartupTimeoutSeconds) + 5
   $mutex = New-Object System.Threading.Mutex($false, "Local\LokrLauncher-$Port")
   try {
-    $ownsMutex = $mutex.WaitOne([TimeSpan]::FromSeconds($StartupTimeoutSeconds + 5))
+    $ownsMutex = $mutex.WaitOne([TimeSpan]::FromSeconds($mutexWaitSeconds))
   } catch [System.Threading.AbandonedMutexException] {
     $ownsMutex = $true
   }
   if (-not $ownsMutex) {
-    throw "Another Lokr launch did not finish within $($StartupTimeoutSeconds + 5) seconds."
+    throw "Another Lokr launch did not finish within $mutexWaitSeconds seconds."
   }
 
   $buildIdPath = Join-Path $ProjectRoot '.next\BUILD_ID'
@@ -326,13 +368,104 @@ try {
     }
   }
 
+  $windowStatus = $null
   if (-not $NoBrowser) {
-    Start-Process -FilePath $chromeExecutable -ArgumentList @(
-      (Quote-ProcessArgument -Value ("--user-data-dir=$chromeProfileDirectory")),
-      '--no-first-run',
-      '--no-default-browser-check',
-      $url
+    Add-Type -TypeDefinition (
+      Get-Content -LiteralPath (Join-Path $PSScriptRoot 'LokrShell.cs') -Raw
     )
+
+    # One Lokr window: a second launch brings the labelled window forward
+    # (restored if minimised) instead of opening another one that starts locked.
+    # @() because PowerShell turns an empty function result into $null.
+    $profileProcessIds = [int[]]@(
+      Get-ChromeProfileProcessIds -ChromeExecutable $chromeExecutable `
+        -ProfileDirectory $chromeProfileDirectory
+    )
+    $openWindow = [Lokr.Launcher.LokrShell]::FindMarked($profileProcessIds, $Port)
+    if ($openWindow -ne 0) {
+      if ([Lokr.Launcher.LokrShell]::BringForward($openWindow)) {
+        $windowStatus = 'focused'
+      } else {
+        $windowStatus = 'flashed'
+      }
+    } else {
+      $windowsBefore = @([Lokr.Launcher.LokrShell]::VisibleWindows($profileProcessIds))
+
+      # App mode: no tab strip or address bar. Same origin and profile as 4.3,
+      # so the existing vault opens unchanged.
+      Start-Process -FilePath $chromeExecutable -ArgumentList @(
+        (Quote-ProcessArgument -Value ("--user-data-dir=$chromeProfileDirectory")),
+        '--no-first-run',
+        '--no-default-browser-check',
+        "--app=$url"
+      )
+
+      $iconResource = (Resolve-WindowIcon -Root $ProjectRoot) + ',0'
+      # The command a pinned Lokr window runs: this launcher, hidden, with the
+      # same port and profile, so it starts the server after a restart.
+      # PowerShell's documented short flags (-NoProfile -NonInteractive
+      # -ExecutionPolicy -WindowStyle) keep this under Windows' length cap.
+      $relaunchArguments = @(
+        '-NoP', '-NonI', '-EP', 'Bypass', '-W', 'Hidden',
+        '-File', (Quote-ProcessArgument -Value $PSCommandPath)
+      )
+      if ($PSBoundParameters.ContainsKey('Port')) {
+        $relaunchArguments += @('-Port', [string]$Port)
+      }
+      if ($PSBoundParameters.ContainsKey('ChromeUserDataDirectory')) {
+        $relaunchArguments += @(
+          '-ChromeUserDataDirectory',
+          (Quote-ProcessArgument -Value $chromeProfileDirectory)
+        )
+      }
+      if ($PSBoundParameters.ContainsKey('ChromePath')) {
+        $relaunchArguments += @('-ChromePath', (Quote-ProcessArgument -Value $chromeExecutable))
+      }
+      $relaunchCommand = (Quote-ProcessArgument -Value (Join-Path $PSHOME 'powershell.exe')) +
+        ' ' + ($relaunchArguments -join ' ')
+      # Windows refuses relaunch values of 256 characters or more. The default
+      # install is about 170; a long custom path keeps the app ID (so a pinned
+      # shortcut still holds the window) but cannot pin the window itself.
+      if ($relaunchCommand.Length -ge 256 -or $iconResource.Length -ge 256) {
+        [Console]::Error.WriteLine(
+          'Lokr launcher: the re-open command is too long for Windows; pin the Desktop shortcut rather than the window.'
+        )
+        $relaunchCommand = ''
+      }
+
+      # Chrome sets no app ID on an --app window, so the new window is labelled
+      # here. A normal tabbed window of the profile (title ends in the browser
+      # name) is never taken for Lokr's.
+      $windowStatus = 'unlabelled'
+      $windowDeadline = [DateTime]::UtcNow.AddSeconds($StartupTimeoutSeconds)
+      while ([DateTime]::UtcNow -lt $windowDeadline) {
+        $profileProcessIds = [int[]]@(
+          Get-ChromeProfileProcessIds -ChromeExecutable $chromeExecutable `
+            -ProfileDirectory $chromeProfileDirectory
+        )
+        $newWindows = @(
+          [Lokr.Launcher.LokrShell]::VisibleWindows($profileProcessIds) |
+            Where-Object {
+              $windowsBefore -notcontains $_ -and
+              -not [Lokr.Launcher.LokrShell]::WindowTitle($_).EndsWith(' - Google Chrome')
+            }
+        )
+        if ($newWindows.Count -gt 0) {
+          # Lokr is already open and usable at this point; a refused label only
+          # costs the taskbar identity, so it is reported rather than fatal.
+          try {
+            [Lokr.Launcher.LokrShell]::Label(
+              $newWindows[0], $Port, $relaunchCommand, $iconResource, 'Lokr'
+            )
+            $windowStatus = 'opened'
+          } catch {
+            [Console]::Error.WriteLine("Lokr launcher: $($_.Exception.Message)")
+          }
+          break
+        }
+        Start-Sleep -Milliseconds 250
+      }
+    }
   }
 
   Write-Output "LOKR_STATUS=$status"
@@ -340,6 +473,7 @@ try {
   Write-Output "LOKR_URL=$url"
   if (-not $NoBrowser) {
     Write-Output "LOKR_CHROME_PROFILE=$chromeProfileDirectory"
+    Write-Output "LOKR_WINDOW=$windowStatus"
   }
 } catch {
   $exitCode = 1

@@ -3,6 +3,13 @@ param(
   [string]$ProjectRoot,
   [string]$DesktopDirectory,
   [string]$IconDirectory,
+
+  # Forwarded to the launcher only when given (the launcher tests, and the
+  # throwaway port-3002 check); a normal install keeps the launcher defaults.
+  [ValidateRange(1, 65535)]
+  [int]$Port = 3001,
+  [string]$ChromeUserDataDirectory,
+
   [switch]$SkipBuild
 )
 
@@ -121,14 +128,40 @@ $shortcutPath = Join-Path $DesktopDirectory 'Lokr.lnk'
 $temporaryPath = Join-Path $DesktopDirectory ".Lokr-$([Guid]::NewGuid().ToString('N')).lnk"
 $backupPath = Join-Path $DesktopDirectory ".Lokr-backup-$([Guid]::NewGuid().ToString('N')).lnk"
 
+function Quote-ShortcutArgument {
+  param([string]$Value)
+
+  if ($Value.Contains('"')) {
+    throw 'A shortcut argument cannot contain a double quote.'
+  }
+  return '"' + $Value + '"'
+}
+
+$launcherArguments = @(
+  '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+  '-WindowStyle', 'Hidden',
+  '-File', (Quote-ShortcutArgument -Value $launcherPath)
+)
+if ($PSBoundParameters.ContainsKey('Port')) {
+  $launcherArguments += @('-Port', [string]$Port)
+}
+if ($PSBoundParameters.ContainsKey('ChromeUserDataDirectory')) {
+  $launcherArguments += @(
+    '-ChromeUserDataDirectory',
+    (Quote-ShortcutArgument -Value $ChromeUserDataDirectory)
+  )
+}
+
+Add-Type -TypeDefinition (
+  Get-Content -LiteralPath (Join-Path $PSScriptRoot 'LokrShell.cs') -Raw
+)
+$appId = [Lokr.Launcher.LokrShell]::AppId($Port)
+
 try {
   $shell = New-Object -ComObject WScript.Shell
   $shortcut = $shell.CreateShortcut($temporaryPath)
   $shortcut.TargetPath = $powerShellPath
-  $shortcut.Arguments = (
-    '-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden ' +
-    '-File "' + $launcherPath + '"'
-  )
+  $shortcut.Arguments = $launcherArguments -join ' '
   $shortcut.WorkingDirectory = $ProjectRoot
   # Explorer caches icons by path. The content hash gives each revision a new
   # path so an updated transparent icon appears without clearing global caches.
@@ -139,6 +172,13 @@ try {
 
   if (-not (Test-Path -LiteralPath $temporaryPath -PathType Leaf)) {
     throw 'Windows did not create the temporary Lokr shortcut.'
+  }
+
+  # WScript.Shell cannot set an app ID. The launcher labels Lokr's window with
+  # the same one, so a pinned shortcut and the open window share one button.
+  [Lokr.Launcher.LokrShell]::SetShortcutAppId($temporaryPath, $appId)
+  if ([Lokr.Launcher.LokrShell]::GetShortcutAppId($temporaryPath) -ne $appId) {
+    throw 'Windows did not keep the Lokr app ID on the shortcut. The Desktop shortcut was not changed.'
   }
 
   if (Test-Path -LiteralPath $shortcutPath -PathType Leaf) {
@@ -163,3 +203,4 @@ try {
 
 Write-Output "LOKR_SHORTCUT=$shortcutPath"
 Write-Output "LOKR_ICON=$installedIconPath"
+Write-Output "LOKR_APP_ID=$appId"

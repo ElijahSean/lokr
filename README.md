@@ -117,8 +117,14 @@ To use it:
 
 1. Double-click **Lokr** on the Desktop.
 2. The shortcut starts Lokr silently on `127.0.0.1:3001` if it is not already running.
-3. It waits for Lokr to become ready, then opens [http://localhost:3001](http://localhost:3001) in a dedicated Google Chrome profile stored at `%LOCALAPPDATA%\Lokr\ChromeProfile`.
-4. Double-clicking it again reuses the existing Lokr server instead of starting another one.
+3. It waits for Lokr to become ready, then opens [http://localhost:3001](http://localhost:3001) as a Chrome app window (no tabs or address bar) in a dedicated Google Chrome profile stored at `%LOCALAPPDATA%\Lokr\ChromeProfile`.
+4. The window gets its own taskbar button with the Lokr padlock, separate from Chrome.
+5. Double-clicking it again reuses the existing Lokr server and brings the open Lokr window to the front (restored if minimised) instead of opening another one.
+
+Links you Ctrl+click in a note open in an ordinary Chrome window of the same
+dedicated profile, which shows Chrome's icon while it is open. Pinning Lokr to
+the taskbar so that one pinned button starts it after a restart is not working
+yet (task 4.5).
 
 The shortcut does not change the Windows default browser or modify your normal
 Chrome profile. Chrome must already be installed. The dedicated profile persists,

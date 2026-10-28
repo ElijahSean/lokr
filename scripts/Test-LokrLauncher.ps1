@@ -207,8 +207,25 @@ function Test-IconStructure {
   ) "ICO sizes were $($actualSizes -join ',')"
 }
 
+function Wait-ForFile {
+  param(
+    [string]$Path,
+    [int]$Seconds = 15
+  )
+
+  $deadline = [DateTime]::UtcNow.AddSeconds($Seconds)
+  while (-not (Test-Path -LiteralPath $Path -PathType Leaf) -and
+      [DateTime]::UtcNow -lt $deadline) {
+    Start-Sleep -Milliseconds 50
+  }
+  return (Test-Path -LiteralPath $Path -PathType Leaf)
+}
+
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $projectRoot = (Resolve-Path -LiteralPath $projectRoot).Path
+Add-Type -TypeDefinition (
+  Get-Content -LiteralPath (Join-Path $PSScriptRoot 'LokrShell.cs') -Raw
+)
 $powerShellPath = Join-Path $PSHOME 'powershell.exe'
 $launcherPath = Join-Path $projectRoot 'scripts\Start-Lokr.ps1'
 $installerPath = Join-Path $projectRoot 'scripts\Install-LokrShortcut.ps1'
@@ -217,6 +234,7 @@ $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
   'Lokr Launcher Tests ' + [Guid]::NewGuid().ToString('N')
 )
 $trackedServers = @()
+$stubWindowProcessIds = @()
 $jobs = @()
 [void](New-Item -ItemType Directory -Path $temporaryRoot)
 
@@ -225,6 +243,16 @@ try {
 
   $desktopPath = Join-Path $temporaryRoot 'Desktop With Spaces'
   $installedIconDirectory = Join-Path $temporaryRoot 'Icon Cache With Spaces'
+  # A pre-4.4 shortcut has no app ID; installing must replace it with one.
+  [void](New-Item -ItemType Directory -Path $desktopPath)
+  $legacyShortcut = (New-Object -ComObject WScript.Shell).CreateShortcut(
+    (Join-Path $desktopPath 'Lokr.lnk')
+  )
+  $legacyShortcut.TargetPath = Join-Path $PSHOME 'powershell.exe'
+  $legacyShortcut.Save()
+  Assert-True (
+    [Lokr.Launcher.LokrShell]::GetShortcutAppId((Join-Path $desktopPath 'Lokr.lnk')) -eq ''
+  ) 'legacy shortcut already had an app ID'
   $installOutput = & $powerShellPath `
     -NoProfile `
     -ExecutionPolicy Bypass `
@@ -252,6 +280,11 @@ try {
       (Get-FileHash -LiteralPath $iconPath -Algorithm SHA256).Hash
   ) 'installed icon content'
   Assert-True ($shortcut.WindowStyle -eq 7) 'shortcut window style'
+  Assert-True (-not $shortcut.Arguments.Contains('-Port')) 'default install forwards no port'
+  Assert-True (
+    [Lokr.Launcher.LokrShell]::GetShortcutAppId($shortcutPath) -eq 'Lokr.Desktop.Port3001'
+  ) 'shortcut app ID'
+  Assert-True ($installOutput.Contains('LOKR_APP_ID=Lokr.Desktop.Port3001')) 'reported app ID'
 
   & $powerShellPath `
     -NoProfile `
@@ -267,6 +300,32 @@ try {
   Assert-True (
     @(Get-ChildItem -LiteralPath $installedIconDirectory -Filter 'lokr-*.ico').Count -eq 1
   ) 'second install created a duplicate icon cache entry'
+  Assert-True (
+    [Lokr.Launcher.LokrShell]::GetShortcutAppId($shortcutPath) -eq 'Lokr.Desktop.Port3001'
+  ) 'reinstall changed the shortcut app ID'
+
+  $portDesktopPath = Join-Path $temporaryRoot 'Port Desktop'
+  $portProfilePath = Join-Path $temporaryRoot 'Port Profile With Spaces'
+  & $powerShellPath `
+    -NoProfile `
+    -ExecutionPolicy Bypass `
+    -File $installerPath `
+    -ProjectRoot $projectRoot `
+    -DesktopDirectory $portDesktopPath `
+    -IconDirectory $installedIconDirectory `
+    -Port 3002 `
+    -ChromeUserDataDirectory $portProfilePath `
+    -SkipBuild | Out-Null
+  Assert-True ($LASTEXITCODE -eq 0) 'port-specific install failed'
+  $portShortcutPath = Join-Path $portDesktopPath 'Lokr.lnk'
+  $portShortcut = $shell.CreateShortcut($portShortcutPath)
+  Assert-True ($portShortcut.Arguments.Contains('-Port 3002')) 'forwarded port'
+  Assert-True (
+    $portShortcut.Arguments.Contains('-ChromeUserDataDirectory "' + $portProfilePath + '"')
+  ) 'forwarded profile'
+  Assert-True (
+    [Lokr.Launcher.LokrShell]::GetShortcutAppId($portShortcutPath) -eq 'Lokr.Desktop.Port3002'
+  ) 'port-specific app ID'
 
   $missingRoot = Join-Path $temporaryRoot 'Missing Build'
   [void](New-Item -ItemType Directory -Path $missingRoot)
@@ -351,13 +410,48 @@ try {
   Assert-True ($reuseResult.Output.Contains('LOKR_STATUS=reused')) 'reuse status'
   Assert-True ($reuseResult.Output.Contains("LOKR_SERVER_PID=$startPid")) 'reuse PID changed'
 
+  # The Chrome stub is a tiny compiled program that records its arguments and
+  # shows one small off-screen window, standing in for Chrome's app window. Like
+  # Chrome's browser process, it is the "Chrome" program and its command line
+  # carries the profile argument.
   $chromeInvocationPath = Join-Path $temporaryRoot 'chrome-invocation.txt'
-  $chromeStubPath = Join-Path $temporaryRoot 'Chrome Stub.cmd'
+  $stubProcessIdPath = Join-Path $temporaryRoot 'stub-window.pid'
+  $chromeStubPath = Join-Path $temporaryRoot 'Chrome Stub.exe'
   $chromeProfilePath = Join-Path $temporaryRoot 'Dedicated Chrome Profile'
-  Set-Content -LiteralPath $chromeStubPath -Encoding ASCII -Value @(
-    '@echo off',
-    ('echo %*>"' + $chromeInvocationPath + '"')
+  $stubSource = @'
+using System;
+using System.Drawing;
+using System.IO;
+using System.Windows.Forms;
+public static class ChromeStub {
+  [STAThread]
+  public static void Main(string[] args) {
+    File.WriteAllText(@"INVOCATION", String.Join(" ", args));
+    File.WriteAllText(@"PIDFILE", System.Diagnostics.Process.GetCurrentProcess().Id.ToString());
+    Form form = new Form();
+    form.Text = "Lokr launcher test window";
+    form.ShowInTaskbar = false;
+    form.StartPosition = FormStartPosition.Manual;
+    form.Location = new Point(-3000, -3000);
+    form.Size = new Size(200, 120);
+    Timer timer = new Timer();
+    timer.Interval = 120000;
+    timer.Tick += delegate { form.Close(); };
+    timer.Start();
+    Application.Run(form);
+  }
+}
+'@
+  $stubSource = $stubSource.Replace('INVOCATION', $chromeInvocationPath).Replace('PIDFILE', $stubProcessIdPath)
+  Add-Type -TypeDefinition $stubSource `
+    -OutputAssembly $chromeStubPath `
+    -OutputType WindowsApplication `
+    -ReferencedAssemblies System.Windows.Forms, System.Drawing
+  $expectedChromeArguments = (
+    "--user-data-dir=$chromeProfilePath --no-first-run --no-default-browser-check " +
+    "--app=http://localhost:$startPort"
   )
+
   $browserResult = Invoke-Launcher `
     -PowerShellPath $powerShellPath `
     -LauncherPath $launcherPath `
@@ -366,24 +460,28 @@ try {
     -ChromePath $chromeStubPath `
     -ChromeUserDataDirectory $chromeProfilePath `
     -OpenBrowser
-  Assert-True ($browserResult.ExitCode -eq 0) "Chrome launch failed: $($browserResult.Output)"
-  $chromeDeadline = [DateTime]::UtcNow.AddSeconds(5)
-  while (-not (Test-Path -LiteralPath $chromeInvocationPath -PathType Leaf) -and
-      [DateTime]::UtcNow -lt $chromeDeadline) {
-    Start-Sleep -Milliseconds 50
+  if (Test-Path -LiteralPath $stubProcessIdPath -PathType Leaf) {
+    $stubWindowProcessIds += [int](Get-Content -LiteralPath $stubProcessIdPath -Raw)
   }
-  Assert-True (Test-Path -LiteralPath $chromeInvocationPath -PathType Leaf) 'Chrome was not launched'
+  Assert-True ($browserResult.ExitCode -eq 0) "Chrome launch failed: $($browserResult.Output)"
+  Assert-True (Wait-ForFile -Path $chromeInvocationPath) 'Chrome was not launched'
   Assert-True (Test-Path -LiteralPath $chromeProfilePath -PathType Container) 'dedicated profile was not created'
   $chromeArguments = (Get-Content -LiteralPath $chromeInvocationPath -Raw).Trim()
-  Assert-True ($chromeArguments.Contains("--user-data-dir=$chromeProfilePath")) 'dedicated profile argument'
-  Assert-True ($chromeArguments.Contains('--no-first-run')) 'first-run prompt suppression'
-  Assert-True ($chromeArguments.Contains('--no-default-browser-check')) 'default-browser prompt suppression'
-  Assert-True ($chromeArguments.EndsWith("http://localhost:$startPort")) 'exact Chrome URL'
-  Assert-True (-not $chromeArguments.Contains('--profile-directory')) 'normal Chrome profile selector'
+  # Exact list: app mode, the dedicated profile, both prompt flags, no bare URL
+  # and no normal-profile selector.
+  Assert-True ($chromeArguments -eq $expectedChromeArguments) "Chrome arguments were: $chromeArguments"
   Assert-True (
     $browserResult.Output.Contains("LOKR_CHROME_PROFILE=$chromeProfilePath")
   ) 'reported dedicated profile path'
+  Assert-True ($browserResult.Output.Contains('LOKR_WINDOW=opened')) "window not labelled: $($browserResult.Output)"
+  $stubWindowProcessId = $stubWindowProcessIds[-1]
+  $stubWindow = [Lokr.Launcher.LokrShell]::FindMarked([int[]]@($stubWindowProcessId), $startPort)
+  Assert-True ($stubWindow -ne 0) 'the opened window carries no Lokr marker'
+  Assert-True (
+    [Lokr.Launcher.LokrShell]::FindMarked([int[]]@($stubWindowProcessId), $startPort + 1) -eq 0
+  ) 'the marker is not port-specific'
 
+  # A second launch with the window open brings it forward instead of starting Chrome.
   Remove-Item -LiteralPath $chromeInvocationPath -Force
   $secondBrowserResult = Invoke-Launcher `
     -PowerShellPath $powerShellPath `
@@ -398,6 +496,59 @@ try {
   Assert-True (
     $secondBrowserResult.Output.Contains("LOKR_CHROME_PROFILE=$chromeProfilePath")
   ) 'second launch changed dedicated profile path'
+  Assert-True (
+    [regex]::IsMatch($secondBrowserResult.Output, 'LOKR_WINDOW=(focused|flashed)')
+  ) "second launch did not reuse the window: $($secondBrowserResult.Output)"
+  Assert-True (-not (Wait-ForFile -Path $chromeInvocationPath -Seconds 2)) 'second launch started Chrome again'
+
+  # A minimised Lokr window is restored, still without a second Chrome start.
+  [Lokr.Launcher.LokrShell]::Minimise($stubWindow)
+  Assert-True ([Lokr.Launcher.LokrShell]::IsMinimised($stubWindow)) 'test window did not minimise'
+  $restoreResult = Invoke-Launcher `
+    -PowerShellPath $powerShellPath `
+    -LauncherPath $launcherPath `
+    -ProjectRoot $projectRoot `
+    -Port $startPort `
+    -ChromePath $chromeStubPath `
+    -ChromeUserDataDirectory $chromeProfilePath `
+    -OpenBrowser
+  Assert-True ($restoreResult.ExitCode -eq 0) 'restore launch failed'
+  Assert-True (-not [Lokr.Launcher.LokrShell]::IsMinimised($stubWindow)) 'minimised window was not restored'
+  Assert-True (-not (Wait-ForFile -Path $chromeInvocationPath -Seconds 2)) 'restore launch started Chrome again'
+
+  # Once the window is closed, a launch opens exactly one new one.
+  Stop-Process -Id $stubWindowProcessId -Force
+  Wait-Process -Id $stubWindowProcessId -Timeout 10 -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $stubProcessIdPath -Force
+  $reopenResult = Invoke-Launcher `
+    -PowerShellPath $powerShellPath `
+    -LauncherPath $launcherPath `
+    -ProjectRoot $projectRoot `
+    -Port $startPort `
+    -ChromePath $chromeStubPath `
+    -ChromeUserDataDirectory $chromeProfilePath `
+    -OpenBrowser
+  if (Test-Path -LiteralPath $stubProcessIdPath -PathType Leaf) {
+    $stubWindowProcessIds += [int](Get-Content -LiteralPath $stubProcessIdPath -Raw)
+  }
+  Assert-True ($reopenResult.ExitCode -eq 0) 'reopen launch failed'
+  Assert-True ($reopenResult.Output.Contains('LOKR_WINDOW=opened')) "closed window was not reopened: $($reopenResult.Output)"
+  Assert-True (Wait-ForFile -Path $chromeInvocationPath) 'reopen did not start Chrome'
+
+  # A Chrome that never shows a window leaves Lokr usable but unlabelled, not failed.
+  $echoStubPath = Join-Path $temporaryRoot 'Chrome Echo Stub.cmd'
+  Set-Content -LiteralPath $echoStubPath -Encoding ASCII -Value @('@echo off', 'exit /b 0')
+  $unlabelledResult = Invoke-Launcher `
+    -PowerShellPath $powerShellPath `
+    -LauncherPath $launcherPath `
+    -ProjectRoot $projectRoot `
+    -Port $startPort `
+    -TimeoutSeconds 2 `
+    -ChromePath $echoStubPath `
+    -ChromeUserDataDirectory (Join-Path $temporaryRoot 'Windowless Profile') `
+    -OpenBrowser
+  Assert-True ($unlabelledResult.ExitCode -eq 0) "windowless Chrome failed the launch: $($unlabelledResult.Output)"
+  Assert-True ($unlabelledResult.Output.Contains('LOKR_WINDOW=unlabelled')) 'windowless status'
 
   $profileCollisionPath = Join-Path $temporaryRoot 'Profile Is A File'
   Set-Content -LiteralPath $profileCollisionPath -Encoding ASCII -Value 'not a directory'
@@ -464,6 +615,13 @@ try {
 } finally {
   foreach ($job in $jobs) {
     Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+  }
+  foreach ($stubProcessId in $stubWindowProcessIds) {
+    $stubProcess = Get-Process -Id $stubProcessId -ErrorAction SilentlyContinue
+    if ($null -ne $stubProcess -and $stubProcess.ProcessName -eq 'Chrome Stub') {
+      Stop-Process -Id $stubProcessId -Force -ErrorAction SilentlyContinue
+      Wait-Process -Id $stubProcessId -Timeout 10 -ErrorAction SilentlyContinue
+    }
   }
   foreach ($server in $trackedServers) {
     Stop-TestServer -ProcessId $server.ProcessId -Port $server.Port
