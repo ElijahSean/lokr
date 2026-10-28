@@ -76,6 +76,14 @@ function expectReadable(text: string, background: string) {
   expect(contrast(text, background), `${text} on ${background}`).toBeGreaterThanOrEqual(AA)
 }
 
+// `top` at `alpha` opacity over `bottom`, for translucent tints such as find's (task 2.9)
+function blend(top: string, bottom: string, alpha: number): string {
+  const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16)
+  return `#${[1, 3, 5]
+    .map(i => Math.round(channel(top, i) * alpha + channel(bottom, i) * (1 - alpha)).toString(16).padStart(2, '0'))
+    .join('')}`
+}
+
 function expectVisible(graphic: string, background: string) {
   expect(contrast(graphic, background), `${graphic} on ${background}`).toBeGreaterThanOrEqual(GRAPHIC)
 }
@@ -317,7 +325,31 @@ for (const theme of ['light', 'dark'] as const) {
         // NoteEditor uses slate-100 for cell borders on every non-black paper.
         expectVisible(slate[100], paper.DEFAULT)
       })
+
+      it(`find highlights read on the ${name} paper (task 2.9)`, () => {
+        // Every match: brand-500/15 tint over a brand-500 underline; the current one
+        // solid brand-500 with brand-label text (NoteEditorSurface's findTone)
+        expectVisible(brand[500], paper.DEFAULT)
+        expectReadable(brand.label, brand[500])
+        for (const text of [primary, slate[100]]) expectReadable(text, blend(brand[500], paper.DEFAULT, 0.15))
+      })
     }
+
+    it('find highlights read inside a code block on the slate papers (task 2.9)', () => {
+      // Code blocks are fixed ink with ink.text on every paper
+      expectVisible(brand[500], ink.DEFAULT)
+      expectReadable(ink.text, blend(brand[500], ink.DEFAULT, 0.15))
+    })
+
+    it('find highlights read on the black paper and its code blocks (task 2.9)', () => {
+      // Black paper: accent/20 tint over an accent underline; the current one solid
+      // accent with ink text
+      for (const bg of [note.black.DEFAULT, ink.DEFAULT]) {
+        expectVisible(accent.DEFAULT, bg)
+        expectReadable(ink.text, blend(accent.DEFAULT, bg, 0.2))
+      }
+      expectReadable(ink.DEFAULT, accent.DEFAULT)
+    })
 
     // Light only: the strip was a text surface until 3.4 took the band off. It is now
     // only the swatch and the list's dot, which dark mode makes a mid-tone instead.

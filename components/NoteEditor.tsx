@@ -13,7 +13,8 @@ import { Extension, type Editor } from '@tiptap/core'
 import { TaskItem, TaskList } from '@tiptap/extension-list'
 import { TableKit } from '@tiptap/extension-table'
 import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model'
-import { Plugin } from '@tiptap/pm/state'
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import {
@@ -25,6 +26,16 @@ import {
   type NoteFontFamily,
   type NoteFontSize,
 } from '@/lib/noteDoc'
+import {
+  buildFindIndex,
+  drawnMatchRange,
+  findMatches,
+  findTextRuns,
+  matchAtOrAfter,
+  stepMatch,
+  type FindIndex,
+  type FindRange,
+} from '@/lib/noteFind'
 import type { NoteTone } from './StickyNoteView'
 
 const NoteLimits = Extension.create({
@@ -100,6 +111,111 @@ const NoteWebAutolink = Extension.create({
   },
 })
 
+// Find in an open note (task 2.9). Highlights are decorations, drawn only: they
+// never enter getJSON(), so the saved note, its signature and every export are
+// unchanged, and find's own transactions change no document, so no autosave runs.
+// The term lives in this plugin's state, which goes with the editor on close or lock.
+interface NoteFindState {
+  term: string
+  index: FindIndex | null
+  matches: FindRange[]
+  current: number
+  decorations: DecorationSet
+}
+
+type NoteFindMeta = { term: string } | { step: 1 | -1 }
+
+const noteFindKey = new PluginKey<NoteFindState>('lokrNoteFind')
+
+function findDecorations(doc: ProseMirrorNode, matches: readonly FindRange[], current: number): DecorationSet {
+  if (matches.length === 0) return DecorationSet.empty
+  // Classes are styled in NoteEditorSurface, which knows the paper's tone. The
+  // current match has only its own class, so the faint tint can't win over its fill.
+  const { start, end } = drawnMatchRange(matches.length, current)
+  return DecorationSet.create(doc, matches.slice(start, end).map((match, offset) => Decoration.inline(
+    match.from,
+    match.to,
+    start + offset === current ? { class: 'lokr-find-current', 'data-find-current': 'true' } : { class: 'lokr-find-match' },
+  )))
+}
+
+function searched(doc: ProseMirrorNode, term: string, index: FindIndex | null, startAt: number): NoteFindState {
+  if (term === '') return { term, index: null, matches: [], current: -1, decorations: DecorationSet.empty }
+  const built = index ?? buildFindIndex(findTextRuns(doc))
+  const matches = findMatches(built, term)
+  const current = matchAtOrAfter(matches, startAt)
+  return { term, index: built, matches, current, decorations: findDecorations(doc, matches, current) }
+}
+
+const NoteFind = Extension.create({
+  name: 'lokrNoteFind',
+  addProseMirrorPlugins() {
+    return [new Plugin<NoteFindState>({
+      key: noteFindKey,
+      state: {
+        init: () => ({ term: '', index: null, matches: [], current: -1, decorations: DecorationSet.empty }),
+        apply(transaction, value, _oldState, newState) {
+          const meta = transaction.getMeta(noteFindKey) as NoteFindMeta | undefined
+          if (meta && 'term' in meta) return searched(newState.doc, meta.term, value.term === '' ? null : value.index, newState.selection.from)
+          if (meta && 'step' in meta) {
+            const current = stepMatch(value.current, value.matches.length, meta.step)
+            return { ...value, current, decorations: findDecorations(newState.doc, value.matches, current) }
+          }
+          if (!transaction.docChanged || value.term === '') return value
+          // An edit while find is open: search the new text, staying at the same match
+          const previous = value.matches[value.current]
+          const startAt = previous ? transaction.mapping.map(previous.from) : 0
+          return searched(newState.doc, value.term, null, startAt)
+        },
+      },
+      props: {
+        decorations: state => noteFindKey.getState(state)?.decorations,
+      },
+    })]
+  },
+})
+
+function dispatchFind(editor: Editor, meta: NoteFindMeta) {
+  // Not an edit: kept out of undo history
+  editor.view.dispatch(editor.state.tr.setMeta(noteFindKey, meta).setMeta('addToHistory', false))
+}
+
+function scrollToCurrentMatch(editor: Editor) {
+  // Centred, like Chrome's find, so the match isn't left on the last visible line
+  editor.view.dom.querySelector('[data-find-current]')?.scrollIntoView({ block: 'center' })
+}
+
+/** Searches the note for `term` ('' clears every highlight) and shows the current match. */
+export function setNoteFindTerm(editor: Editor, term: string) {
+  dispatchFind(editor, { term })
+  scrollToCurrentMatch(editor)
+}
+
+export function stepNoteFind(editor: Editor, step: 1 | -1) {
+  dispatchFind(editor, { step })
+  scrollToCurrentMatch(editor)
+}
+
+/** Clears the highlights and puts the cursor at the match find stopped on, if any. */
+export function closeNoteFind(editor: Editor) {
+  const state = noteFindKey.getState(editor.state)
+  const match = state ? state.matches[state.current] : undefined
+  dispatchFind(editor, { term: '' })
+  if (match) editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, match.from)).scrollIntoView())
+  editor.commands.focus()
+}
+
+/** "n of m" for the find strip: current is 1-based, 0 when nothing matches. */
+export function useNoteFindStatus(editor: Editor | null): { current: number; count: number } {
+  return useEditorState({
+    editor,
+    selector: ({ editor: current }) => {
+      const state = current ? noteFindKey.getState(current.state) : undefined
+      return { current: state ? state.current + 1 : 0, count: state?.matches.length ?? 0 }
+    },
+  }) ?? { current: 0, count: 0 }
+}
+
 const NOTE_EXTENSIONS = [
   StarterKit.configure({
     blockquote: false,
@@ -129,6 +245,7 @@ const NOTE_EXTENSIONS = [
   NoteLinkPasteSafety,
   NoteWebAutolink,
   NoteLimits,
+  NoteFind,
 ]
 
 export function useNoteEditor(
@@ -198,10 +315,17 @@ export function NoteEditorSurface({
   const tableTone = tone === 'light-text'
     ? '[&_td]:border-ink-text [&_th]:border-ink-text [&_th]:bg-white/10'
     : '[&_td]:border-slate-100 [&_th]:border-slate-100 [&_th]:bg-black/5 dark:[&_th]:bg-white/10'
+  // Find (task 2.9): every match a faint blue tint over a blue underline, the current
+  // one solid blue with its own text colour (also over code-block colours). Black
+  // paper takes the fixed accent blue, which keeps 3:1 on it in both themes.
+  // Pairings are checked in tests/theme.spec.ts.
+  const findTone = tone === 'light-text'
+    ? '[&_.lokr-find-match]:bg-accent/20 [&_.lokr-find-match]:shadow-[inset_0_-2px_0_theme(colors.accent.DEFAULT)] [&_.lokr-find-current]:bg-accent [&_.lokr-find-current]:text-ink [&_.lokr-find-current_*]:text-ink'
+    : '[&_.lokr-find-match]:bg-brand-500/15 [&_.lokr-find-match]:shadow-[inset_0_-2px_0_rgb(var(--c-brand-500))] [&_.lokr-find-current]:bg-brand-500 [&_.lokr-find-current]:text-brand-label [&_.lokr-find-current_*]:text-brand-label'
   return (
     <div className={`min-h-0 flex-1 overflow-y-auto rounded-xl ${FONT_CLASSES[fontFamily]} ${SIZE_CLASSES[fontSize]} ${textClass} ${placeholderClass} ${
       lined ? `${linedClass} bg-local` : ''
-    } ${tableTone}`}>
+    } ${tableTone} ${findTone} [&_.lokr-find-match]:rounded-sm [&_.lokr-find-current]:rounded-sm`}>
       <EditorContent
         editor={editor}
         className="min-h-full [&_.tiptap]:min-h-full [&_.tiptap]:outline-none [&_.tiptap]:pb-10 [&_p]:min-h-[1.5em] [&_h1]:mb-2 [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-xl [&_h2]:font-semibold [&_a]:cursor-pointer [&_a]:underline [&_a]:decoration-2 [&_a]:underline-offset-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0 [&_li[data-type=taskItem]]:flex [&_li[data-type=taskItem]]:items-start [&_li[data-type=taskItem]]:gap-2 [&_li[data-type=taskItem]>label]:mt-1 [&_li[data-type=taskItem]>div]:min-w-0 [&_li[data-type=taskItem]>div]:flex-1 [&_table]:my-3 [&_table]:w-full [&_table]:border-collapse [&_table]:table-fixed [&_td]:border [&_td]:p-2 [&_td]:align-top [&_th]:border [&_th]:p-2 [&_th]:text-left [&_th]:font-semibold [&_.selectedCell]:bg-black/10 dark:[&_.selectedCell]:bg-white/15"

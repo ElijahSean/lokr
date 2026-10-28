@@ -20,7 +20,7 @@
 
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   NOTE_COLOURS,
   NOTE_TITLE_MAX,
@@ -28,7 +28,7 @@ import {
   type NoteColour,
   type NoteContent,
 } from '@/lib/notes'
-import { CloseIcon, DownloadIcon, LinesIcon, PinIcon, TrashIcon, UploadIcon, WarningIcon } from '@/components/Icons'
+import { ChevronDownIcon, CloseIcon, DownloadIcon, LinesIcon, PinIcon, SearchIcon, TrashIcon, UploadIcon, WarningIcon } from '@/components/Icons'
 import { BRAND_FINISH, DANGER_OUTLINE, DANGER_OUTLINE_ON_DARK } from '@/components/ui'
 import { useSession } from '@/hooks/useSession'
 import {
@@ -44,7 +44,16 @@ import {
   type NoteFontFamily,
   type NoteFontSize,
 } from '@/lib/noteDoc'
-import { NoteEditorSurface, NoteFormattingToolbar, useNoteEditor } from './NoteEditor'
+import {
+  NoteEditorSurface,
+  NoteFormattingToolbar,
+  closeNoteFind,
+  setNoteFindTerm,
+  stepNoteFind,
+  useNoteEditor,
+  useNoteFindStatus,
+} from './NoteEditor'
+import { normalizeFindTerm } from '@/lib/noteFind'
 import { listNotePictures } from '@/lib/db'
 import { decryptBytes } from '@/lib/crypto'
 import {
@@ -179,6 +188,11 @@ export default function StickyNoteView({
   const [isAddingPicture, setIsAddingPicture] = useState(false)
   const [selectedPictureId, setSelectedPictureId] = useState<number | null>(null)
   const [pictureToRemove, setPictureToRemove] = useState<number | null>(null)
+  // Find (task 2.9): the term is component memory only, kept for reopening in
+  // this note and gone when the note closes or Lokr locks (both unmount this view)
+  const [findOpen, setFindOpen] = useState(false)
+  const [findTerm, setFindTerm] = useState('')
+  const findInputRef            = useRef<HTMLInputElement>(null)
   const titleRef                = useRef<HTMLInputElement>(null)
   const pictureInputRef         = useRef<HTMLInputElement>(null)
   const pictureUrlsRef          = useRef(new Set<string>())
@@ -193,6 +207,7 @@ export default function StickyNoteView({
     lock()
   })
   const plainBody = documentToPlainText(draft.body)
+  const findStatus = useNoteFindStatus(editor)
 
   // Focus the title on open; the parent returns focus to the card on close.
   useEffect(() => { titleRef.current?.focus() }, [])
@@ -236,12 +251,45 @@ export default function StickyNoteView({
     pictureUrlsRef.current.clear()
   }, [])
 
-  // Escape: cancel an open confirm first, otherwise close (asking if dirty).
+  const openFind = useCallback(() => {
+    if (findOpen) {
+      findInputRef.current?.focus()
+      findInputRef.current?.select()
+      return
+    }
+    setFindOpen(true)
+    // The last term comes back (selected by the box's onFocus) and is searched again
+    if (editor && findTerm) setNoteFindTerm(editor, findTerm)
+  }, [editor, findOpen, findTerm])
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false)
+    if (editor) closeNoteFind(editor)
+  }, [editor])
+
+  // Ctrl+F (Cmd+F on macOS) is Lokr's find only while a note is open: this
+  // listener lives and dies with the note view, so elsewhere it stays Chrome's.
+  useEffect(() => {
+    function handleFind(e: KeyboardEvent) {
+      if (e.key.toLowerCase() !== 'f' || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
+      e.preventDefault()
+      openFind()
+    }
+    document.addEventListener('keydown', handleFind)
+    return () => document.removeEventListener('keydown', handleFind)
+  }, [openFind])
+
+  // Escape closes find first, then cancels an open confirm, otherwise closes (asking if dirty).
   // The listener is removed on unmount, which includes every lock.
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key !== 'Escape') return
       e.preventDefault()
+      // Before the busy check: closing find never closes the note (task 2.9)
+      if (findOpen) {
+        closeFind()
+        return
+      }
       if (isExporting) return
       if (selectedPictureId !== null) setSelectedPictureId(null)
       else if (confirm !== 'none') setConfirm('none')
@@ -250,7 +298,7 @@ export default function StickyNoteView({
     }
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
-  }, [confirm, isDirty, isExporting, onClose, selectedPictureId])
+  }, [closeFind, confirm, findOpen, isDirty, isExporting, onClose, selectedPictureId])
 
   function update(patch: Partial<NoteContent>) {
     setDraft(d => ({ ...d, ...patch }))
@@ -510,6 +558,18 @@ export default function StickyNoteView({
                 {isAddingPicture ? 'Processing…' : 'Attach picture'}
               </button>
 
+              <button
+                type="button"
+                onClick={() => (findOpen ? closeFind() : openFind())}
+                aria-label="Find in note"
+                aria-expanded={findOpen}
+                aria-controls="note-find"
+                title="Find (Ctrl+F)"
+                className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${tone.text} ${findOpen ? tone.pressed : tone.hover}`}
+              >
+                <SearchIcon />
+              </button>
+
               <label className="sr-only" htmlFor="note-font-family">Font family</label>
               <select
                 id="note-font-family"
@@ -642,6 +702,69 @@ export default function StickyNoteView({
           )}
         </div>
       </div>
+
+      {/* Find strip (task 2.9): its own row, so it stays while a confirm holds the
+          tool row; on a phone the box shrinks and the buttons stay on its line */}
+      {findOpen && (
+        <div id="note-find" className={`border-b ${tone.divider}`}>
+          <div className={`${row} py-2`} role="search" aria-label="Find in note">
+            <SearchIcon className={`h-4 w-4 flex-shrink-0 ${tone.secondary}`} />
+            <input
+              ref={findInputRef}
+              type="text"
+              value={findTerm}
+              autoFocus
+              onFocus={e => e.target.select()}
+              onChange={e => {
+                setFindTerm(e.target.value)
+                if (editor) setNoteFindTerm(editor, e.target.value)
+              }}
+              onKeyDown={e => {
+                if (e.key !== 'Enter' || !editor) return
+                e.preventDefault()
+                stepNoteFind(editor, e.shiftKey ? -1 : 1)
+              }}
+              placeholder="Find in note"
+              aria-label="Find in note"
+              autoComplete="off"
+              spellCheck={false}
+              className={`min-w-0 flex-1 rounded-full border border-current bg-transparent px-3 py-1.5 text-sm sm:max-w-xs ${tone.text} ${tone.placeholder} focus:outline-none focus:ring-2 focus:ring-brand-500`}
+            />
+            <span className={`whitespace-nowrap text-sm ${tone.muted}`} role="status" aria-live="polite">
+              {normalizeFindTerm(findTerm) === '' ? '' : findStatus.count === 0 ? 'No matches' : `${findStatus.current} of ${findStatus.count}`}
+            </span>
+            <button
+              type="button"
+              onClick={() => editor && stepNoteFind(editor, -1)}
+              disabled={findStatus.count === 0}
+              aria-label="Previous match"
+              title="Previous (Shift+Enter)"
+              className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${tone.text} ${tone.hover}`}
+            >
+              <ChevronDownIcon className="h-4 w-4 rotate-180" />
+            </button>
+            <button
+              type="button"
+              onClick={() => editor && stepNoteFind(editor, 1)}
+              disabled={findStatus.count === 0}
+              aria-label="Next match"
+              title="Next (Enter)"
+              className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${tone.text} ${tone.hover}`}
+            >
+              <ChevronDownIcon className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={closeFind}
+              aria-label="Close find"
+              title="Close find (Esc)"
+              className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors ${tone.secondary} ${tone.hover}`}
+            >
+              <CloseIcon />
+            </button>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className={`${row} pt-3`}>
