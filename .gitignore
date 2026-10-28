@@ -12,8 +12,30 @@ out/
 # Never commit a vault export. Both hold everything; the CSV holds it in plain text.
 *.vault
 *.csv
+# A single exported note: encrypted, but still someone's data
+*.lokrnote
+
+# Personal design notes, kept on disk only (marked confidential)
+Lokr-Design-Document.docx
+
+# Secrets and local environment (Lokr needs none; guard against adding them)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Test and tool caches
+coverage/
+.vitest-cache/
+.eslintcache
 
 # OS / editor noise
 .DS_Store
 Thumbs.db
+desktop.ini
 *.log
+.vscode/
+.idea/

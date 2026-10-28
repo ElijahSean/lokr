@@ -63,6 +63,11 @@ Scans all your entries and flags:
 - **Full Reset** — wipe all vault data from this device (requires typing `RESET`)
 - Reminder banner if no backup in 7+ days
 
+### Encrypted Notes
+- Rich-text notes with eight paper colours, pins, notebook lines, headings, lists, checklists, tables, and links
+- Up to five encrypted pictures per note, re-encoded to drop camera metadata
+- Find inside an open note with **Ctrl+F** (Cmd+F on macOS) or the magnifier: every match highlighted, "n of m", Enter / Shift+Enter to step
+
 ### Note Files
 - **Export one note** — creates `lokr-note.lokrnote`, encrypted with a separate 12+ character file password
 - **Import a note** — accepts `.lokrnote`, UTF-8 `.txt`, and raw-text `.md` files up to 100 KB
@@ -97,7 +102,7 @@ cd lokr
 pnpm install
 ```
 
-This installs Next.js, React, Dexie.js, argon2-browser, TypeScript, Tailwind CSS, and ESLint.
+This installs Next.js, React, Dexie.js, argon2-browser, Tiptap, TypeScript, Tailwind CSS, Vitest, and ESLint.
 
 ## Windows Desktop Shortcut
 
@@ -140,9 +145,9 @@ Chrome keeps IndexedDB data separate by profile, so an existing normal-profile
 vault does not appear automatically. Transfer it through Lokr's authenticated,
 encrypted backup format—never by copying Chrome profile or database files:
 
-1. Open normal Chrome manually, visit [http://localhost:3001](http://localhost:3001), unlock the existing vault, and use **Backup → Download encrypted backup**.
+1. Open normal Chrome manually, visit [http://localhost:3001](http://localhost:3001), unlock the existing vault, and use **Backup → Download lokr-backup.vault**.
 2. Open the Desktop shortcut. On the dedicated profile's first launch, create an empty temporary vault so you can reach the **Backup** tab.
-3. Choose **Restore from `.vault`**, select the downloaded backup, and enter the original vault's master password. Restore fully replaces the temporary vault.
+3. Under **Import backup**, select the downloaded `.vault` file, and enter the original vault's master password. Restore fully replaces the temporary vault.
 4. Verify the entries, notes and attachments, then lock and unlock once with the original master password before removing any old data.
 
 The old normal-profile vault is not changed or deleted by installing or launching
@@ -173,6 +178,12 @@ pnpm dev
 
 Open [http://localhost:3001](http://localhost:3001) in your browser. Stop the
 development server with `Ctrl+C` in its terminal.
+
+The development server uses the same port and the same `.next` build folder as
+the Desktop shortcut's hidden production server. Stop that server first (end
+its `node` process), and run `pnpm shortcut:install` afterwards so the shortcut
+has a production build again. Running `pnpm dev` alongside it overwrites the
+production build, and the shortcut's Lokr then fails to load.
 
 ### Other commands
 
@@ -209,7 +220,7 @@ Create a separate browser profile just for Lokr. This isolates it from extension
 
 1. Open Lokr from the Desktop shortcut, or browse to [http://localhost:3001](http://localhost:3001)
 2. Enter your master password and click **Unlock**
-3. After 3 wrong attempts there is a delay; after 10 the tab locks out permanently until closed
+3. After 3 wrong attempts each retry is delayed (up to 30 seconds); after 10, unlocking is blocked for 15 minutes. The counter is stored with the vault, so a new tab or reload does not reset it
 
 ### Changing Light or Dark Mode
 
@@ -235,6 +246,15 @@ header. The change is immediate and remains selected the next time Lokr opens.
 5. Enter your 4–8 digit PIN (non-digit characters are blocked automatically)
 6. Add optional notes (bank name, branch, card type, etc.)
 7. Click **Add Entry**
+
+### Finding Text in a Note
+
+1. Open a note and press **Ctrl+F** (Cmd+F on macOS), or click the magnifier in the tool row
+2. Type a word: every match is highlighted and the count shows "2 of 7"
+3. Press **Enter** for the next match and **Shift+Enter** for the previous one; both wrap round
+4. Press **Esc** to close find; the cursor stays at the match. Press **Esc** again to close the note
+
+Outside an open note, Ctrl+F is the browser's own find. The search term is never saved.
 
 ### Copying a Password
 
@@ -341,6 +361,10 @@ Use this to wipe all data from the device (e.g. before lending the device).
 ### Storage note
 IndexedDB data is stored in your browser profile directory. If you use browser sync, disable syncing for `localhost` to prevent encrypted vault data from being uploaded to the browser's cloud.
 
+Never commit a backup or export to this repository. `.gitignore` excludes
+`.vault`, `.csv` and `.lokrnote` files, and the vault itself lives only in the
+browser profile, never in the project folder.
+
 The separate `lokr-theme` cookie stores only `light` or `dark` so the correct
 appearance can be rendered before the page first appears. It contains no vault
 identifier, password, key, ciphertext, or account data.
@@ -373,7 +397,8 @@ Master Password + Random Salt
 |---|---|---|
 | Framework | Next.js 14 (App Router) | App shell, routing, security headers |
 | Language | TypeScript strict mode | Type safety across all files |
-| Styling | Tailwind CSS | Utility classes, YouVersion colour tokens |
+| Styling | Tailwind CSS | Utility classes, SPACED-inspired light/dark colour tokens |
+| Note editor | Tiptap 3 (ProseMirror) | Rich notes stored as sanitised JSON, never HTML |
 | Key derivation | argon2-browser (Argon2id) | Master password → encryption key |
 | Encryption | Web Crypto API — AES-256-GCM | Per-entry encryption with authentication |
 | Integrity | Web Crypto API — HMAC-SHA256 | Vault-level tamper detection |
