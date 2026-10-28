@@ -9,6 +9,15 @@ out/
 .dev-loop/
 .claude/settings.local.json
 
+# Development-process docs: kept on disk for the dev loop, not published
+CLAUDE.md
+DEVELOPMENT.md
+TASKS.md
+LEARNINGS.md
+LEARNINGS-archive.md
+requirements/
+.claude/
+
 # Never commit a vault export. Both hold everything; the CSV holds it in plain text.
 *.vault
 *.csv
